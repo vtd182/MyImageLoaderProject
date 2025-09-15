@@ -18,7 +18,7 @@ class PhotoViewModel @Inject constructor(
     private val _photos = MutableStateFlow<List<UnsplashPhoto>>(emptyList())
     val photos: StateFlow<List<UnsplashPhoto>> = _photos
 
-    fun loadPhotos(count: Int = 10) {
+    fun loadPhotos(count: Int = 100) {
         viewModelScope.launch {
             try {
                 _photos.value = getRandomPhotosUseCase(count)
