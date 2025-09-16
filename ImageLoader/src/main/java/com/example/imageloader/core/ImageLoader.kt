@@ -1,4 +1,3 @@
-// core/ImageLoader.kt
 package com.example.imageloader.core
 
 import com.example.imageloader.cache.MemoryCache

@@ -1,4 +1,3 @@
-// cache/MemoryCache.kt
 package com.example.imageloader.cache
 
 import android.graphics.Bitmap

@@ -1,4 +1,3 @@
-// core/Request.kt
 package com.example.imageloader.core
 
 data class Request(

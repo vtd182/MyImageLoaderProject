@@ -1,4 +1,3 @@
-// core/RequestBuilder.kt
 package com.example.imageloader.core
 
 import com.example.imageloader.target.ImageViewTarget

@@ -1,4 +1,3 @@
-// target/ImageViewTarget.kt
 package com.example.imageloader.target
 
 import android.widget.ImageView

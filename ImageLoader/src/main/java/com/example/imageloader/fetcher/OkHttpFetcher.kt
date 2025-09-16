@@ -1,4 +1,3 @@
-// fetcher/OkHttpFetcher.kt
 package com.example.imageloader.fetcher
 
 import kotlinx.coroutines.Dispatchers

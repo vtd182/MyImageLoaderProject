@@ -1,4 +1,3 @@
-// fetcher/DataFetcher.kt
 package com.example.imageloader.fetcher
 
 interface DataFetcher {
