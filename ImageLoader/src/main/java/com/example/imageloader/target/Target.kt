@@ -1,4 +1,3 @@
-// target/Target.kt
 package com.example.imageloader.target
 
 import android.graphics.Bitmap

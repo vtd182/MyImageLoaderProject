@@ -1,4 +1,3 @@
-// decode/BitmapDecoder.kt
 package com.example.imageloader.decode
 
 import android.graphics.Bitmap
