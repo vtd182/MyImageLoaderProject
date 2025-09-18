@@ -1,3 +1,4 @@
+package com.example.myimageloaderproject.modules.home.data.model
 
 data class UnsplashUrlsDTO(
     val thumb: String?,

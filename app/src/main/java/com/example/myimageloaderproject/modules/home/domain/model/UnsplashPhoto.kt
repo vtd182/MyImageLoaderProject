@@ -1,3 +1,5 @@
+package com.example.myimageloaderproject.modules.home.domain.model
+
 data class UnsplashPhoto(
     val id: String,
     val created_at: String,

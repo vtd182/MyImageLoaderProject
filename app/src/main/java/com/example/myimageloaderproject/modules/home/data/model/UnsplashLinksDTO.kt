@@ -1,3 +1,4 @@
+package com.example.myimageloaderproject.modules.home.data.model
 
 data class UnsplashLinksDTO(
     val self: String,

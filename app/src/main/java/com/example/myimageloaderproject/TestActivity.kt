@@ -1,30 +1,51 @@
 package com.example.myimageloaderproject
 
 import android.os.Bundle
-import android.widget.ImageView
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import com.example.imageloader.core.ImageLoader
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.example.myimageloaderproject.modules.home.presentation.viewmodel.PhotoViewModel
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
+@AndroidEntryPoint
 class TestActivity : AppCompatActivity() {
+
+    private val viewModel: PhotoViewModel by viewModels()
+    private lateinit var adapter: PhotoAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Tạo ImageView
-        val imageView = ImageView(this).apply {
-            layoutParams =
-                android.widget.LinearLayout.LayoutParams(
-                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                    500
-                )
-            scaleType = ImageView.ScaleType.CENTER_CROP
+        val recyclerView = RecyclerView(this).apply {
+            layoutManager = GridLayoutManager(this@TestActivity, 1)
+        }
+        setContentView(recyclerView)
+
+        adapter = PhotoAdapter()
+        recyclerView.adapter = adapter
+
+       recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                val layoutManager = rv.layoutManager as GridLayoutManager
+                val totalItemCount = layoutManager.itemCount
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+
+                if (lastVisible >= totalItemCount - 5) {
+                    viewModel.loadMorePhotos()
+                }
+            }
+        })
+
+       lifecycleScope.launch {
+            viewModel.photos.collectLatest {
+                adapter.submitList(it)
+            }
         }
 
-        setContentView(imageView)
-
-        ImageLoader.with()
-            .load("https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d")
-            .resize(500, 500)
-            .into(imageView)
+        viewModel.loadPhotos()
     }
 }

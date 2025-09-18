@@ -1,6 +1,6 @@
 package com.example.myimageloaderproject.modules.home.data.remote
 
-import UnsplashPhoto
+import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 import retrofit2.http.GET
 import retrofit2.http.Query
 
