@@ -1,3 +1,4 @@
+package com.example.myimageloaderproject.modules.home.data.model
 
 
 data class UnsplashUserDTO(
@@ -10,6 +11,6 @@ data class UnsplashUserDTO(
     val total_likes: Int,
     val total_photos: Int,
     val total_collection: Int,
-    val profile_image: UnsplashUrls,
-    val links: UnsplashLinks
+    val profile_image: UnsplashUrlsDTO,
+    val links: UnsplashLinksDTO
 )

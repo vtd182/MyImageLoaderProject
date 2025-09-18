@@ -1,5 +1,4 @@
-
-
+package com.example.myimageloaderproject.modules.home.domain.model
 data class UnsplashUser(
     val id: String,
     val username: String,
