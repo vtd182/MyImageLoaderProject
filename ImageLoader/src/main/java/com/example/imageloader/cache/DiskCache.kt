@@ -19,33 +19,48 @@ class DiskCache(
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    @Synchronized
     fun get(url: String): Bitmap? {
         val file = File(cacheDir, hashKey(url))
         return if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
     }
 
-    fun put(url: String, bitmap: Bitmap) {
+    @Synchronized
+    fun put(url: String, bitmap: Bitmap): Boolean {
         val file = File(cacheDir, hashKey(url))
-        if (file.exists()) return
-        FileOutputStream(file).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        if (file.exists()) return true
+
+        val estimatedSize = bitmap.byteCount.toLong()
+        val total = cacheDir.listFiles()?.sumOf { it.length() } ?: 0
+        if (total + estimatedSize > maxSizeBytes) {
+            trimCache((total + estimatedSize) - maxSizeBytes)
         }
-        trimCache()
+
+        val tempFile = File(cacheDir, "${file.name}.tmp")
+        return try {
+            FileOutputStream(tempFile).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            tempFile.renameTo(file)
+        } catch (e: Exception) {
+            tempFile.delete()
+            false
+        }
     }
 
-    private fun trimCache() {
-        var total = cacheDir.listFiles()?.sumOf { it.length() } ?: 0
-        if (total <= maxSizeBytes) return
-
-        val sorted = cacheDir.listFiles()?.sortedBy { it.lastModified() } ?: return
-        for (f in sorted) {
-            if (total <= maxSizeBytes) break
-            total -= f.length()
-            f.delete()
-        }
-    }
-
+    @Synchronized
     fun clear() {
         cacheDir.listFiles()?.forEach { it.delete() }
+    }
+
+    private fun trimCache(requiredFree: Long) {
+        var freed = 0L
+        cacheDir.listFiles()
+            ?.sortedBy { it.lastModified() }
+            ?.forEach {
+                if (freed >= requiredFree) return
+                val size = it.length()
+                if (it.delete()) freed += size
+            }
     }
 }
