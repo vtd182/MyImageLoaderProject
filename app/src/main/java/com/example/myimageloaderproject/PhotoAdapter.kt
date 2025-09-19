@@ -23,7 +23,7 @@ class PhotoAdapter :
         RecyclerView.ViewHolder(imageView) {
 
         fun bind(photo: UnsplashPhoto) {
-            imageView.setImageDrawable(null)
+            //imageView.setImageDrawable(null)
 
             ImageLoader.with(imageView.context)
                 .load(photo.urls.small)
