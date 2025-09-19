@@ -14,6 +14,7 @@ class RequestBuilder(
     private var resizeHeight: Int? = null
     private var useMemoryCache: Boolean = true
     private var useDiskCache: Boolean = true
+    private var placeholderRes: Int? = null
 
     fun load(url: String): RequestBuilder { this.url = url; return this }
     fun resize(width: Int, height: Int): RequestBuilder { resizeWidth = width; resizeHeight = height; return this }
@@ -24,7 +25,11 @@ class RequestBuilder(
         val request = Request(url ?: throw IllegalArgumentException("URL required"), resizeWidth, resizeHeight, useMemoryCache, useDiskCache)
         val key = buildKey(request)
         val target = ImageViewTargetWithActive(imageView, activeResources, key)
-        engine.load(request, target)
+        // reset state về placeholder
+        placeholderRes?.let { imageView.setImageResource(it) } ?: imageView.setImageDrawable(null)
+        // chạy request
+        val job = engine.load(request, target)
+        RequestManager.track(imageView, job)
     }
 
     fun into(target: Target) {

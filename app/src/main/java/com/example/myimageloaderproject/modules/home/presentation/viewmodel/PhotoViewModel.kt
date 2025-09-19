@@ -23,7 +23,7 @@ class PhotoViewModel @Inject constructor(
 
     private var currentPage = 1
 
-    fun loadPhotos(count: Int = 7) {
+    fun loadPhotos(count: Int = 20) {
         if (isLoading) return
         isLoading = true
         viewModelScope.launch {
@@ -38,7 +38,7 @@ class PhotoViewModel @Inject constructor(
         }
     }
 
-    fun loadMorePhotos(count: Int = 7) {
+    fun loadMorePhotos(count: Int = 20) {
         if (isLoading) return
         isLoading = true
         viewModelScope.launch {

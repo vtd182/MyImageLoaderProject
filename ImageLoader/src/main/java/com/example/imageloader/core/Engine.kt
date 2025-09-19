@@ -9,6 +9,7 @@ import com.example.imageloader.fetcher.DataFetcher
 import com.example.imageloader.target.Target
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -19,20 +20,20 @@ class Engine(
     private val fetcher: DataFetcher
 ) {
 
-    fun load(req: Request, target: Target) {
+    fun load(req: Request, target: Target): Job? {
         val key = buildKey(req)
 
         // 1. Active Resources
         activeResources.get(key)?.let {
             target.onResourceReady(it)
-            return
+            return null
         }
 
         // 2. Memory Cache
         memoryCache.get(key)?.let {
             activeResources.put(key, it)
             target.onResourceReady(it)
-            return
+            return null
         }
 
         // 3. Disk Cache
@@ -40,14 +41,18 @@ class Engine(
             memoryCache.put(key, it)
             activeResources.put(key, it)
             target.onResourceReady(it)
-            return
+            return null
         }
 
         // 4. Network
-        CoroutineScope(Dispatchers.IO).launch {
+        return CoroutineScope(Dispatchers.IO).launch {
             try {
                 val bytes = fetcher.fetch(req.url)
-                val bitmap = BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
+                val bitmap = BitmapDecoder.decode(
+                    bytes,
+                    req.resizeWidth ?: 0,
+                    req.resizeHeight ?: 0
+                )
 
                 if (req.useMemoryCache) memoryCache.put(key, bitmap)
                 activeResources.put(key, bitmap)

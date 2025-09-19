@@ -21,7 +21,7 @@ class TestActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val recyclerView = RecyclerView(this).apply {
-            layoutManager = GridLayoutManager(this@TestActivity, 1)
+            layoutManager = GridLayoutManager(this@TestActivity, 2)
         }
         setContentView(recyclerView)
 
