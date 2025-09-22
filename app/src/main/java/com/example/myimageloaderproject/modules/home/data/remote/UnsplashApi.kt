@@ -1,13 +1,24 @@
 package com.example.myimageloaderproject.modules.home.data.remote
 
+import com.example.myimageloaderproject.core.base.BaseApiService
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
-import retrofit2.http.GET
-import retrofit2.http.Query
+import com.example.myimageloaderproject.network.HttpClient
+
+import kotlinx.serialization.builtins.ListSerializer
 
 interface UnsplashApi {
-    @GET("photos")
-    suspend fun getRandomPhotos(
-        @Query("page") page: Int,
-        @Query("per_page") perPage: Int = 20
-    ): List<UnsplashPhoto>
+    suspend fun getRandomPhotos(page: Int, perPage: Int = 20): List<UnsplashPhoto>
+}
+
+class UnsplashApiImpl(
+    client: HttpClient
+) : BaseApiService(client), UnsplashApi {
+
+    override suspend fun getRandomPhotos(page: Int, perPage: Int): List<UnsplashPhoto> {
+        return get(
+            path = "photos",
+            query = mapOf("page" to page.toString(), "per_page" to perPage.toString()),
+            deserializer = ListSerializer(UnsplashPhoto.serializer())
+        )
+    }
 }

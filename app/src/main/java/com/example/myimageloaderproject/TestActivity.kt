@@ -10,11 +10,9 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.imageloader.core.ImageLoader
 import com.example.myimageloaderproject.modules.home.presentation.viewmodel.PhotoViewModel
-import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-@AndroidEntryPoint
 class TestActivity : AppCompatActivity() {
 
     private val viewModel: PhotoViewModel by viewModels()
