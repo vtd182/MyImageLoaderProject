@@ -1,5 +1,7 @@
 package com.example.myimageloaderproject.modules.home.domain.model
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class UnsplashPhoto(
     val id: String,
     val created_at: String,

@@ -24,6 +24,7 @@ class PhotoAdapter :
 
         fun bind(photo: UnsplashPhoto) {
             //imageView.setImageDrawable(null)
+            if (photo.urls.small == null) return
 
             ImageLoader.with(imageView.context)
                 .load(photo.urls.small)
