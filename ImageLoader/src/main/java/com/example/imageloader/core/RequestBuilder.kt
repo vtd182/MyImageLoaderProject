@@ -2,7 +2,7 @@ package com.example.imageloader.core
 
 import android.widget.ImageView
 import com.example.imageloader.cache.ActiveResources
-import com.example.imageloader.target.ImageViewTargetWithActive
+import com.example.imageloader.target.ImageViewTarget
 import com.example.imageloader.target.Target
 
 class RequestBuilder(
@@ -23,8 +23,7 @@ class RequestBuilder(
 
     fun into(imageView: ImageView) {
         val request = Request(url ?: throw IllegalArgumentException("URL required"), resizeWidth, resizeHeight, useMemoryCache, useDiskCache)
-        val key = buildKey(request)
-        val target = ImageViewTargetWithActive(imageView, activeResources, key)
+        val target = ImageViewTarget(imageView)
         // reset state về placeholder
         placeholderRes?.let { imageView.setImageResource(it) } ?: imageView.setImageDrawable(null)
         // chạy request

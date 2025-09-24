@@ -1,24 +1,24 @@
 package com.example.imageloader.cache
 
-import android.graphics.Bitmap
-import java.lang.ref.ReferenceQueue
-import java.lang.ref.WeakReference
+import com.example.imageloader.core.Resource
+import com.example.imageloader.core.ResourceListener
 
-class ActiveResources(private val memoryCache: MemoryCache) {
+class ActiveResources : ResourceListener {
+    private val activeMap = mutableMapOf<String, Resource>()
+    private var resourceReleasedCallback: ((String, Resource) -> Unit)? = null
 
-    private val activeMap = mutableMapOf<String, WeakReference<Bitmap>>()
-    private val refQueue = ReferenceQueue<Bitmap>()
-
-    @Synchronized
-    fun put(key: String, bitmap: Bitmap) {
-        activeMap[key] = WeakReference(bitmap, refQueue)
-        cleanup()
+    fun setOnResourceReleased(callback: (String, Resource) -> Unit) {
+        resourceReleasedCallback = callback
     }
 
     @Synchronized
-    fun get(key: String): Bitmap? {
-        cleanup()
-        return activeMap[key]?.get()
+    fun put(key: String, resource: Resource) {
+        activeMap[key] = resource
+    }
+
+    @Synchronized
+    fun get(key: String): Resource? {
+        return activeMap[key]
     }
 
     @Synchronized
@@ -26,17 +26,10 @@ class ActiveResources(private val memoryCache: MemoryCache) {
         activeMap.remove(key)
     }
 
-    private fun cleanup() {
-        var ref = refQueue.poll()
-        while (ref != null) {
-            val entry = activeMap.entries.find { it.value == ref }
-            if (entry != null) {
-                entry.value.get()?.let { bitmap ->
-                    memoryCache.put(entry.key, bitmap)
-                }
-                activeMap.remove(entry.key)
-            }
-            ref = refQueue.poll()
+    override fun onResourceReleased(key: String, resource: Resource) {
+        synchronized(this) {
+            activeMap.remove(key)
         }
+        resourceReleasedCallback?.invoke(key, resource)
     }
 }

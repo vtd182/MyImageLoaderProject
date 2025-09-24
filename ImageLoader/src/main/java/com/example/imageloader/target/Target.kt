@@ -1,8 +1,8 @@
 package com.example.imageloader.target
 
-import android.graphics.Bitmap
+import com.example.imageloader.core.Resource
 
 interface Target {
-    fun onResourceReady(bitmap: Bitmap)
+    fun onResourceReady(resource: Resource)
     fun onLoadFailed()
 }
