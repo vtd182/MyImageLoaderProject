@@ -10,6 +10,7 @@ import com.example.myimageloaderproject.network.HttpClient
 object Injector {
     private const val BASE_URL = "https://api.unsplash.com/"
     private const val ACCESS_KEY = "WisKyjbbno1lYFrCkYyzZUhiffEkjFdEEAC-kQvMs3I"
+    private const val ACCESS_KEY_V2 = "jJgrH_pPfg_c-CROedmueKKsE_F7xvbUvXDoKZemxYs"
 
     private val httpClient by lazy { HttpClient(BASE_URL, ACCESS_KEY) }
 
