@@ -18,12 +18,14 @@ class PhotoViewModel: ViewModel() {
 
     private var currentPage = 1
 
-    fun loadPhotos(count: Int = 20) {
+    private var perPage = 10
+
+    fun loadPhotos() {
         if (isLoading) return
         isLoading = true
         viewModelScope.launch {
             try {
-                val newPhotos = getRandomPhotosUseCase(count, currentPage)
+                val newPhotos = getRandomPhotosUseCase(perPage, currentPage)
                 _photos.value = newPhotos
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -33,12 +35,12 @@ class PhotoViewModel: ViewModel() {
         }
     }
 
-    fun loadMorePhotos(count: Int = 20) {
+    fun loadMorePhotos() {
         if (isLoading) return
         isLoading = true
         viewModelScope.launch {
             try {
-                val newPhotos = getRandomPhotosUseCase(count, currentPage + 1)
+                val newPhotos = getRandomPhotosUseCase(perPage, currentPage + 1)
                 _photos.update { currentList -> 
                     currentList.toMutableList().apply { addAll(newPhotos) }
                 }

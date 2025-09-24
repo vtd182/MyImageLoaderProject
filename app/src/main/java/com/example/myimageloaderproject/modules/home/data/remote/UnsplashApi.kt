@@ -7,7 +7,7 @@ import com.example.myimageloaderproject.network.HttpClient
 import kotlinx.serialization.builtins.ListSerializer
 
 interface UnsplashApi {
-    suspend fun getRandomPhotos(page: Int, perPage: Int = 20): List<UnsplashPhoto>
+    suspend fun getRandomPhotos(page: Int, perPage: Int = 10): List<UnsplashPhoto>
 }
 
 class UnsplashApiImpl(

@@ -1,8 +1,13 @@
 package com.example.myimageloaderproject
-
+import android.content.Context
+import android.graphics.Color
+import android.util.AttributeSet
+import android.util.Log
+import android.view.Choreographer
 import android.os.Bundle
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -42,9 +47,8 @@ class TestActivity : AppCompatActivity() {
             .resize(200, 200)
             .into(headerImage)
 
-        // RecyclerView
         val recyclerView = RecyclerView(this).apply {
-            layoutManager = GridLayoutManager(this@TestActivity, 5)
+            layoutManager = GridLayoutManager(this@TestActivity, 2)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
@@ -59,6 +63,19 @@ class TestActivity : AppCompatActivity() {
         container.addView(recyclerView)
 
         setContentView(container)
+
+        // Thêm FPSOverlay
+        val fpsOverlay = FPSOverlay(this)
+        addContentView(
+            fpsOverlay,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 50
+                rightMargin = 20
+            }
+        )
 
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
@@ -78,5 +95,37 @@ class TestActivity : AppCompatActivity() {
         }
 
         viewModel.loadPhotos()
+    }
+}
+
+class FPSOverlay @JvmOverloads constructor(
+    context: Context, attrs: AttributeSet? = null
+) : androidx.appcompat.widget.AppCompatTextView(context, attrs), Choreographer.FrameCallback {
+    private var lastTime = System.nanoTime()
+    private var frameCount = 0
+
+    init {
+        setBackgroundColor(Color.parseColor("#88000000"))
+        setTextColor(Color.WHITE)
+        textSize = 12f
+        Choreographer.getInstance().postFrameCallback(this)
+    }
+
+    override fun doFrame(frameTimeNanos: Long) {
+        frameCount++
+        val now = System.nanoTime()
+        val delta = (now - lastTime) / 1_000_000_000.0
+        if (delta >= 1.0) {
+            val fps = frameCount / delta
+            text = "FPS: ${fps.toInt()}"
+            frameCount = 0
+            lastTime = now
+        }
+        Choreographer.getInstance().postFrameCallback(this)
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        Choreographer.getInstance().removeFrameCallback(this)
     }
 }

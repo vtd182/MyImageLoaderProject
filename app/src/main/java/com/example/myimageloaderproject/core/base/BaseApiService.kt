@@ -20,7 +20,6 @@ open class BaseApiService(
         deserializer: DeserializationStrategy<T>
     ): T {
         val response = client.get(path, query)
-        if (response == null) throw Exception("Response is null")
         return json.decodeFromString(deserializer, response)
     }
 }
