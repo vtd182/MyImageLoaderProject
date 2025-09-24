@@ -2,10 +2,18 @@ package com.example.imageloader.cache
 
 import android.graphics.Bitmap
 import android.util.LruCache
+import com.example.imageloader.core.BitmapPool
 
-class MemoryCache(maxBytes: Int) {
+class MemoryCache(maxBytes: Int, private val bitmapPool: BitmapPool? = null
+) {
     private val cache = object : LruCache<String, Bitmap>(maxBytes) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+
+        override fun entryRemoved(evicted: Boolean, key: String?, oldValue: Bitmap?, newValue: Bitmap?) {
+            if (evicted && oldValue != null && oldValue.isMutable) {
+                bitmapPool?.put(oldValue)
+            }
+        }
     }
 
     fun get(key: String): Bitmap? = cache.get(key)
