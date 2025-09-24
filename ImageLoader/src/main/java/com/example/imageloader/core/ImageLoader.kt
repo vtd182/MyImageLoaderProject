@@ -8,11 +8,12 @@ import com.example.imageloader.fetcher.HttpFetcher
 
 class ImageLoader private constructor(context: Context) {
 
-    private val memoryCache = MemoryCache((Runtime.getRuntime().maxMemory() / 8).toInt())
     private val diskCache = DiskCache(context)
-    private val activeResources = ActiveResources(memoryCache)
+    private val activeResources = ActiveResources()
     private val fetcher = HttpFetcher()
-    val engine = Engine(activeResources, memoryCache, diskCache, fetcher)
+    private val bitmapPool = LruBitmapPool((Runtime.getRuntime().maxMemory() / 8).toLong())
+    private val memoryCache = MemoryCache((Runtime.getRuntime().maxMemory() / 8).toInt(), bitmapPool)
+    val engine = Engine(activeResources, memoryCache, diskCache, fetcher, bitmapPool)
 
     companion object {
         @Volatile
