@@ -9,6 +9,7 @@ interface BitmapPool {
     fun get(width: Int, height: Int, config: Config): Bitmap?
     fun put(bitmap: Bitmap)
     fun clear()
+    fun size(): Long
 }
 
 class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
@@ -97,4 +98,6 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
         val s = width * height * bytesPerPixel
         return s
     }
+
+    override fun size(): Long = currentSize
 }

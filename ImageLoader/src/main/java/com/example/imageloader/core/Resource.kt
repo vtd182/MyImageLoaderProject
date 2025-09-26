@@ -43,10 +43,16 @@ class Resource(
     fun isMutable(): Boolean = bitmap.isMutable
 
 
-    fun sizeInBytes(): Int = try { bitmap.allocationByteCount } catch (t: Throwable) { bitmap.byteCount }
+    fun sizeInBytes(): Int = try {
+        bitmap.allocationByteCount
+    } catch (t: Throwable) {
+        bitmap.byteCount
+    }
 
 
     fun recycle() {
         if (!bitmap.isRecycled) bitmap.recycle()
     }
+
+    fun isReleased(): Boolean = released.get()
 }

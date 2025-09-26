@@ -1,13 +1,11 @@
 package com.example.imageloader.core
 
 import android.widget.ImageView
-import com.example.imageloader.cache.ActiveResources
 import com.example.imageloader.target.ImageViewTarget
 import com.example.imageloader.target.Target
 
 class RequestBuilder(
     private val engine: Engine,
-    private val activeResources: ActiveResources
 ) {
     private var url: String? = null
     private var resizeWidth: Int? = null
@@ -16,13 +14,30 @@ class RequestBuilder(
     private var useDiskCache: Boolean = true
     private var placeholderRes: Int? = null
 
-    fun load(url: String): RequestBuilder { this.url = url; return this }
-    fun resize(width: Int, height: Int): RequestBuilder { resizeWidth = width; resizeHeight = height; return this }
-    fun skipMemoryCache(): RequestBuilder { useMemoryCache = false; return this }
-    fun skipDiskCache(): RequestBuilder { useDiskCache = false; return this }
+    fun load(url: String): RequestBuilder {
+        this.url = url; return this
+    }
+
+    fun resize(width: Int, height: Int): RequestBuilder {
+        resizeWidth = width; resizeHeight = height; return this
+    }
+
+    fun skipMemoryCache(): RequestBuilder {
+        useMemoryCache = false; return this
+    }
+
+    fun skipDiskCache(): RequestBuilder {
+        useDiskCache = false; return this
+    }
 
     fun into(imageView: ImageView) {
-        val request = Request(url ?: throw IllegalArgumentException("URL required"), resizeWidth, resizeHeight, useMemoryCache, useDiskCache)
+        val request = Request(
+            url ?: throw IllegalArgumentException("URL required"),
+            resizeWidth,
+            resizeHeight,
+            useMemoryCache,
+            useDiskCache
+        )
         val target = ImageViewTarget(imageView)
         // reset state về placeholder
         placeholderRes?.let { imageView.setImageResource(it) } ?: imageView.setImageDrawable(null)
@@ -32,7 +47,13 @@ class RequestBuilder(
     }
 
     fun into(target: Target) {
-        val request = Request(url ?: throw IllegalArgumentException("URL required"), resizeWidth, resizeHeight, useMemoryCache, useDiskCache)
+        val request = Request(
+            url ?: throw IllegalArgumentException("URL required"),
+            resizeWidth,
+            resizeHeight,
+            useMemoryCache,
+            useDiskCache
+        )
         engine.load(request, target)
     }
 

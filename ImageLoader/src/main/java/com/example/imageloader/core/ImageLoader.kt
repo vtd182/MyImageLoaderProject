@@ -11,8 +11,9 @@ class ImageLoader private constructor(context: Context) {
     private val diskCache = DiskCache(context)
     private val activeResources = ActiveResources()
     private val fetcher = HttpFetcher()
-    private val bitmapPool = LruBitmapPool((Runtime.getRuntime().maxMemory() / 8).toLong())
-    private val memoryCache = MemoryCache((Runtime.getRuntime().maxMemory() / 8).toInt(), bitmapPool)
+    private val bitmapPool = LruBitmapPool((Runtime.getRuntime().maxMemory() / 8))
+    private val memoryCache =
+        MemoryCache((Runtime.getRuntime().maxMemory() / 8).toInt(), bitmapPool)
     val engine = Engine(activeResources, memoryCache, diskCache, fetcher, bitmapPool)
 
     companion object {
@@ -26,9 +27,7 @@ class ImageLoader private constructor(context: Context) {
         }
 
         fun with(context: Context): RequestBuilder {
-            return getInstance(context).let { instance ->
-                RequestBuilder(instance.engine, instance.activeResources)
-            }
+            return RequestBuilder(getInstance(context).engine)
         }
     }
 }

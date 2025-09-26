@@ -1,6 +1,7 @@
 package com.example.imageloader.cache
 
 import android.graphics.Bitmap
+import android.util.Log
 import android.util.LruCache
 import com.example.imageloader.core.BitmapPool
 
@@ -11,7 +12,9 @@ class MemoryCache(maxBytes: Int, private val bitmapPool: BitmapPool? = null
 
         override fun entryRemoved(evicted: Boolean, key: String?, oldValue: Bitmap?, newValue: Bitmap?) {
             if (evicted && oldValue != null && oldValue.isMutable) {
+                Log.d("MemoryCache", "Put bitmap to pool: $key")
                 bitmapPool?.put(oldValue)
+                Log.d("MemoryCache", "Pool size: ${bitmapPool?.size()}")
             }
         }
     }
