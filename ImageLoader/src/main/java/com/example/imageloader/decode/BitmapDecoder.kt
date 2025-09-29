@@ -2,12 +2,11 @@ package com.example.imageloader.decode
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.palette.graphics.Palette
 import com.example.imageloader.core.BitmapPool
-import java.io.ByteArrayInputStream
 
 object BitmapDecoder {
     fun decode(bytes: ByteArray, reqW: Int, reqH: Int, pool: BitmapPool?): Bitmap {
-        // 1. decode bounds
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
 
@@ -18,25 +17,28 @@ object BitmapDecoder {
             inMutable = true
         }
 
-        // try to get an inBitmap from pool
-        if (pool != null) {
-            val targetW = (bounds.outWidth / sample).coerceAtLeast(1)
-            val targetH = (bounds.outHeight / sample).coerceAtLeast(1)
-            val candidate = pool.get(targetW, targetH, Bitmap.Config.ARGB_8888)
-            if (candidate != null) {
-                try {
-                    opts.inBitmap = candidate
-                } catch (e: IllegalArgumentException) {
-                    // inBitmap not compatible, ignore and continue without it
-                }
-            }
-        }
-
-        // actual decode
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
             ?: throw IllegalStateException("Decode returned null")
 
         return bmp
+    }
+
+    fun extractDominantColor(bytes: ByteArray, thumbSize: Int = 10): Int {
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSizeForThumb(thumbSize, thumbSize)
+        }
+
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+            ?: return 0xFFCCCCCC.toInt() // xám nhạt
+
+        val palette = Palette.from(bmp).generate()
+        bmp.recycle()
+
+        return palette.getVibrantColor(
+            palette.getMutedColor(
+                palette.getDominantColor(0xFFCCCCCC.toInt())
+            )
+        )
     }
 
     private fun calculateInSampleSize(outW: Int, outH: Int, reqW: Int, reqH: Int): Int {
@@ -50,5 +52,9 @@ object BitmapDecoder {
             }
         }
         return inSampleSize
+    }
+
+    private fun calculateInSampleSizeForThumb(reqW: Int, reqH: Int): Int {
+        return 512 / reqW
     }
 }

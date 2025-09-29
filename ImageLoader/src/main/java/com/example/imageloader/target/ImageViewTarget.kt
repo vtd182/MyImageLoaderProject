@@ -35,6 +35,10 @@ class ImageViewTarget(private val imageView: ImageView) : Target {
         imageView.setImageDrawable(null)
     }
 
+    override fun onPlaceholderColor(color: Int) {
+        imageView.setBackgroundColor(color)
+    }
+
     fun clear() {
         current?.release()
         current = null
