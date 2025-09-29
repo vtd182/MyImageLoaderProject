@@ -6,30 +6,60 @@ import com.example.myimageloaderproject.di.Injector
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class HomeViewModel: ViewModel() {
+
+sealed class HomeUiState {
+    object InitLoading : HomeUiState()
+    data class InitError(val throwable: Throwable) : HomeUiState()
+    data class Data(
+        val photos: List<UnsplashPhoto>,
+        val isRefreshing: Boolean = false,
+        val isLoadingMore: Boolean = false
+    ) : HomeUiState()
+}
+
+class HomeViewModel : ViewModel() {
     private val getRandomPhotosUseCase = Injector.getRandomPhotosUseCase
 
-    private val _photos = MutableStateFlow<List<UnsplashPhoto>>(emptyList())
-    val photos: StateFlow<List<UnsplashPhoto>> = _photos
-
-    private var isLoading = false
+    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.InitLoading)
+    val uiState: StateFlow<HomeUiState> = _uiState
 
     private var currentPage = 1
-
     private var perPage = 10
+    private var isLoading = false
 
     fun loadPhotos() {
         if (isLoading) return
         isLoading = true
+        _uiState.value = HomeUiState.InitLoading
         viewModelScope.launch {
             try {
-                val newPhotos = getRandomPhotosUseCase(perPage, currentPage)
-                _photos.value = newPhotos
+                val newPhotos = getRandomPhotosUseCase(perPage, 1)
+                currentPage = 1
+                _uiState.value = HomeUiState.Data(newPhotos)
             } catch (e: Exception) {
-                e.printStackTrace()
+                _uiState.value = HomeUiState.InitError(e)
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    fun refresh() {
+        if (isLoading) return
+        isLoading = true
+        val current = _uiState.value
+        if (current is HomeUiState.Data) {
+            _uiState.value = current.copy(isRefreshing = true)
+        }
+        viewModelScope.launch {
+            try {
+                val newPhotos = getRandomPhotosUseCase(perPage, 1)
+                currentPage = 1
+                _uiState.value = HomeUiState.Data(newPhotos)
+            } catch (e: Exception) {
+                _uiState.value = HomeUiState.InitError(e)
             } finally {
                 isLoading = false
             }
@@ -38,18 +68,23 @@ class HomeViewModel: ViewModel() {
 
     fun loadMorePhotos() {
         if (isLoading) return
+        val current = _uiState.value
+        if (current !is HomeUiState.Data) return
         isLoading = true
+        _uiState.value = current.copy(isLoadingMore = true)
         viewModelScope.launch {
             try {
                 val newPhotos = getRandomPhotosUseCase(perPage, currentPage + 1)
-                _photos.update { currentList ->
-                    currentList.toMutableList().apply { addAll(newPhotos) }
-                }
+                currentPage++
+                _uiState.value = HomeUiState.Data(
+                    photos = current.photos + newPhotos,
+                    isRefreshing = false,
+                    isLoadingMore = false
+                )
             } catch (e: Exception) {
-                e.printStackTrace()
+                _uiState.value = current.copy(isLoadingMore = false)
             } finally {
                 isLoading = false
-                currentPage++
             }
         }
     }

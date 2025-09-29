@@ -15,14 +15,15 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.modules.home.presentation.adapter.PhotoAdapter
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import androidx.core.graphics.toColorInt
 
 class HomeActivity : AppCompatActivity() {
 
@@ -35,6 +36,9 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var btnToggleCorner: Button
     private var spanCount = 2
     private lateinit var layoutManager: GridLayoutManager
+    private lateinit var swipeRefresh: SwipeRefreshLayout
+
+    private lateinit var footerLoading: View
 
     private lateinit var scaleGestureDetector: ScaleGestureDetector
 
@@ -54,6 +58,7 @@ class HomeActivity : AppCompatActivity() {
         layoutManager = GridLayoutManager(this, spanCount)
         recyclerView.layoutManager = layoutManager
         recyclerView.adapter = adapter
+        footerLoading = findViewById(R.id.footerLoading)
 
         // Scale gesture detector
         scaleGestureDetector = ScaleGestureDetector(
@@ -83,6 +88,11 @@ class HomeActivity : AppCompatActivity() {
         btnRetry.setOnClickListener { viewModel.loadPhotos() }
         btnToggleCorner.setOnClickListener {
             Toast.makeText(this, "Toggle corner function (TODO)", Toast.LENGTH_SHORT).show()
+        }
+
+        swipeRefresh = findViewById(R.id.swipeRefresh)
+        swipeRefresh.setOnRefreshListener {
+            viewModel.refresh()
         }
 
         observeData()
@@ -123,10 +133,27 @@ class HomeActivity : AppCompatActivity() {
 
     private fun observeData() {
         lifecycleScope.launch {
-            viewModel.photos.collectLatest { list ->
-                progressBar.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-                errorLayout.visibility = View.GONE
-                adapter.submitList(list)
+            viewModel.uiState.collectLatest { state ->
+                when (state) {
+                    is HomeUiState.InitLoading -> {
+                        progressBar.visibility = View.VISIBLE
+                        errorLayout.visibility = View.GONE
+                    }
+
+                    is HomeUiState.InitError -> {
+                        progressBar.visibility = View.GONE
+                        errorLayout.visibility = View.VISIBLE
+                    }
+
+                    is HomeUiState.Data -> {
+                        progressBar.visibility = View.GONE
+                        errorLayout.visibility = View.GONE
+                        adapter.submitList(state.photos)
+                        swipeRefresh.isRefreshing = state.isRefreshing
+                        footerLoading.visibility =
+                            if (state.isLoadingMore) View.VISIBLE else View.GONE
+                    }
+                }
             }
         }
     }
