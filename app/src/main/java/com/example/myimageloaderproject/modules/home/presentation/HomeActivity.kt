@@ -18,10 +18,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.myimageloaderproject.modules.home.presentation.adapter.PhotoAdapter
 import com.example.myimageloaderproject.R
+import com.example.myimageloaderproject.modules.home.presentation.adapter.PhotoAdapter
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.core.graphics.toColorInt
 
 class HomeActivity : AppCompatActivity() {
 
@@ -48,19 +49,15 @@ class HomeActivity : AppCompatActivity() {
         btnRetry = findViewById(R.id.btnRetry)
         btnToggleCorner = findViewById(R.id.btnToggleCorner)
 
-        adapter = PhotoAdapter(
-            onLongClick = { photo ->
-                Toast.makeText(this, "Download option for ${photo.id}", Toast.LENGTH_SHORT).show()
-                // TODO: implement download action sheet
-            }
-        )
+        adapter = PhotoAdapter()
 
         layoutManager = GridLayoutManager(this, spanCount)
         recyclerView.layoutManager = layoutManager
         recyclerView.adapter = adapter
 
         // Scale gesture detector
-        scaleGestureDetector = ScaleGestureDetector(this,
+        scaleGestureDetector = ScaleGestureDetector(
+            this,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
 
                 private var accumulatedScale = 1f
@@ -100,6 +97,19 @@ class HomeActivity : AppCompatActivity() {
                 }
             }
         })
+
+        recyclerView.addItemDecoration(object : RecyclerView.ItemDecoration() {
+            private val space = (8 * resources.displayMetrics.density).toInt()
+            override fun getItemOffsets(
+                outRect: android.graphics.Rect,
+                view: View,
+                parent: RecyclerView,
+                state: RecyclerView.State
+            ) {
+                outRect.set(space, space, space, space)
+            }
+        })
+
 
         addFpsOverlay()
     }
@@ -143,7 +153,7 @@ class FPSOverlay @JvmOverloads constructor(
     private var frameCount = 0
 
     init {
-        setBackgroundColor(Color.parseColor("#88000000"))
+        setBackgroundColor("#88000000".toColorInt())
         setTextColor(Color.WHITE)
         textSize = 12f
         Choreographer.getInstance().postFrameCallback(this)
@@ -155,7 +165,7 @@ class FPSOverlay @JvmOverloads constructor(
         val delta = (now - lastTime) / 1_000_000_000.0
         if (delta >= 1.0) {
             val fps = frameCount / delta
-            text = "FPS: ${fps.toInt()}"
+            text = context.getString(R.string.fps_display, fps.toInt())
             frameCount = 0
             lastTime = now
         }

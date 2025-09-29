@@ -1,16 +1,19 @@
 package com.example.myimageloaderproject.modules.home.presentation.adapter
 
+import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.imageloader.core.ImageLoader
+import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 
-class PhotoAdapter(
-    private val onLongClick: (UnsplashPhoto) -> Unit
-) : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(DiffCallback) {
+class PhotoAdapter : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(DiffCallback) {
 
     object DiffCallback : DiffUtil.ItemCallback<UnsplashPhoto>() {
         override fun areItemsTheSame(oldItem: UnsplashPhoto, newItem: UnsplashPhoto) =
@@ -20,33 +23,39 @@ class PhotoAdapter(
             oldItem == newItem
     }
 
-    inner class PhotoViewHolder(private val imageView: ImageView) :
-        RecyclerView.ViewHolder(imageView) {
+    inner class PhotoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val imgPhoto: ImageView = itemView.findViewById(R.id.imgPhoto)
+        private val tvDescription: TextView = itemView.findViewById(R.id.tvDescription)
 
         fun bind(photo: UnsplashPhoto) {
-            if (photo.urls.small == null) return
-            ImageLoader.Companion.with(imageView.context)
-                .load(photo.urls.small)
-                .resize(400, 400)
-                .into(imageView)
+            // Load ảnh vuông 400x400
+            photo.urls.small?.let {
+                ImageLoader.with(imgPhoto.context)
+                    .load(it)
+                    .resize(400, 400)
+                    .into(imgPhoto)
+            }
 
-            imageView.setOnLongClickListener {
-                onLongClick(photo)
+            // Description hoặc fallback
+            val desc = photo.description ?: "Photo ${photo.id}"
+            tvDescription.text = desc
+
+            // Long click trên description -> toast download
+            tvDescription.setOnLongClickListener {
+                Toast.makeText(
+                    it.context,
+                    "Download option for ${photo.id}",
+                    Toast.LENGTH_SHORT
+                ).show()
                 true
             }
         }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoViewHolder {
-        val imageView = ImageView(parent.context).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            adjustViewBounds = true
-            scaleType = ImageView.ScaleType.CENTER_CROP
-        }
-        return PhotoViewHolder(imageView)
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_photo, parent, false)
+        return PhotoViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: PhotoViewHolder, position: Int) {
