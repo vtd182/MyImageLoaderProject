@@ -85,7 +85,6 @@ class Engine(
                     bytes,
                     req.resizeWidth ?: 0,
                     req.resizeHeight ?: 0,
-                    bitmapPool
                 )
                 Log.d(TAG, "Decoded bitmap w=${bitmap.width} h=${bitmap.height} for $key")
 
