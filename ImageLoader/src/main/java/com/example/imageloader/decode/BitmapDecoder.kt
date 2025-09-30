@@ -3,10 +3,9 @@ package com.example.imageloader.decode
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.palette.graphics.Palette
-import com.example.imageloader.core.BitmapPool
 
 object BitmapDecoder {
-    fun decode(bytes: ByteArray, reqW: Int, reqH: Int, pool: BitmapPool?): Bitmap {
+    fun decode(bytes: ByteArray, reqW: Int, reqH: Int): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
 
