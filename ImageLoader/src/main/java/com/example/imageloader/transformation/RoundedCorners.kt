@@ -7,7 +7,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
-import com.example.imageloader.core.BitmapPool
+import com.example.imageloader.core.abstract.BitmapPool
 
 class RoundedCorners(private val radius: Float) : BaseTransformation("RoundedCorners($radius)") {
     override fun transform(

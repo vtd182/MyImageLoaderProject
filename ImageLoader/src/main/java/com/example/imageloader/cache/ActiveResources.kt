@@ -1,23 +1,23 @@
 package com.example.imageloader.cache
 
-import com.example.imageloader.core.Resource
-import com.example.imageloader.core.ResourceListener
+import com.example.imageloader.core.EngineResource
+import com.example.imageloader.core.abstract.ResourceListener
 
 class ActiveResources : ResourceListener {
-    private val activeMap = mutableMapOf<String, Resource>()
-    private var resourceReleasedCallback: ((String, Resource) -> Unit)? = null
+    private val activeMap = mutableMapOf<String, EngineResource>()
+    private var resourceReleasedCallback: ((String, EngineResource) -> Unit)? = null
 
-    fun setOnResourceReleased(callback: (String, Resource) -> Unit) {
+    fun setOnResourceReleased(callback: (String, EngineResource) -> Unit) {
         resourceReleasedCallback = callback
     }
 
     @Synchronized
-    fun put(key: String, resource: Resource) {
-        activeMap[key] = resource
+    fun put(key: String, engineResource: EngineResource) {
+        activeMap[key] = engineResource
     }
 
     @Synchronized
-    fun get(key: String): Resource? {
+    fun get(key: String): EngineResource? {
         return activeMap[key]
     }
 
@@ -26,10 +26,10 @@ class ActiveResources : ResourceListener {
         activeMap.remove(key)
     }
 
-    override fun onResourceReleased(key: String, resource: Resource) {
+    override fun onResourceReleased(key: String, engineResource: EngineResource) {
         synchronized(this) {
             activeMap.remove(key)
         }
-        resourceReleasedCallback?.invoke(key, resource)
+        resourceReleasedCallback?.invoke(key, engineResource)
     }
 }

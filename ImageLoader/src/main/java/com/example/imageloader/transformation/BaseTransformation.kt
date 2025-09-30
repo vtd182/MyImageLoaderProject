@@ -2,7 +2,7 @@ package com.example.imageloader.transformation
 
 import android.graphics.Bitmap
 import androidx.core.graphics.createBitmap
-import com.example.imageloader.core.BitmapPool
+import com.example.imageloader.core.abstract.BitmapPool
 
 abstract class BaseTransformation(
     private val id: String

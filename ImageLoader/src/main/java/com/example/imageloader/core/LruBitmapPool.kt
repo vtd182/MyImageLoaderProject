@@ -2,18 +2,12 @@ package com.example.imageloader.core
 
 import android.graphics.Bitmap
 import android.graphics.Bitmap.Config
+import com.example.imageloader.core.abstract.BitmapPool
 import java.util.ArrayDeque
-import java.util.LinkedHashMap
-
-interface BitmapPool {
-    fun get(width: Int, height: Int, config: Config): Bitmap?
-    fun put(bitmap: Bitmap)
-    fun clear()
-    fun size(): Long
-}
 
 class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
     private data class Key(val size: Int, val config: Config)
+
     private val buckets = LinkedHashMap<Key, ArrayDeque<Bitmap>>(16, 0.75f, true)
     private var currentSize = 0L
 
@@ -51,7 +45,11 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
     @Synchronized
     override fun put(bitmap: Bitmap) {
         if (bitmap.isRecycled || !bitmap.isMutable) return
-        val size = try { bitmap.allocationByteCount } catch (t: Throwable) { bitmap.byteCount }
+        val size = try {
+            bitmap.allocationByteCount
+        } catch (t: Throwable) {
+            bitmap.byteCount
+        }
         if (size > maxSizeBytes / 2) {
             return
         }
@@ -80,7 +78,11 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
             val deque = entry.value
             while (deque.isNotEmpty() && currentSize > maxSize) {
                 val b = deque.removeLast()
-                currentSize -= try { b.allocationByteCount } catch (t: Throwable) { b.byteCount }
+                currentSize -= try {
+                    b.allocationByteCount
+                } catch (t: Throwable) {
+                    b.byteCount
+                }
                 if (!b.isRecycled) b.recycle()
             }
             if (deque.isEmpty()) it.remove()

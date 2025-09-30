@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.imageloader.cache.ActiveResources
 import com.example.imageloader.cache.DiskCache
 import com.example.imageloader.cache.MemoryCache
+import com.example.imageloader.core.abstract.BitmapPool
 import com.example.imageloader.decode.BitmapDecoder
 import com.example.imageloader.fetcher.DataFetcher
 import com.example.imageloader.target.Target
@@ -52,7 +53,7 @@ class Engine(
         // 2. Memory Cache
         memoryCache.get(key)?.let { bitmap ->
             Log.d(TAG, "Hit MemoryCache: $key")
-            val res = Resource(key, bitmap, activeResources)
+            val res = EngineResource(key, bitmap, activeResources)
             activeResources.put(key, res)
             target.onResourceReady(res)
             return null
@@ -62,7 +63,7 @@ class Engine(
         diskCache.get(key)?.let { bitmap ->
             Log.d(TAG, "Hit DiskCache: $key")
             memoryCache.put(key, bitmap)
-            val res = Resource(key, bitmap, activeResources)
+            val res = EngineResource(key, bitmap, activeResources)
             activeResources.put(key, res)
             target.onResourceReady(res)
             return null
@@ -88,7 +89,7 @@ class Engine(
                 )
                 Log.d(TAG, "Decoded bitmap w=${bitmap.width} h=${bitmap.height} for $key")
 
-                val res = Resource(key, bitmap, activeResources)
+                val res = EngineResource(key, bitmap, activeResources)
                 activeResources.put(key, res)
 
                 if (req.useDiskCache) {

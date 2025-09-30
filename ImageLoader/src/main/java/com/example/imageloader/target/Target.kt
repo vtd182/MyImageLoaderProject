@@ -1,9 +1,9 @@
 package com.example.imageloader.target
 
-import com.example.imageloader.core.Resource
+import com.example.imageloader.core.EngineResource
 
 interface Target {
-    fun onResourceReady(resource: Resource)
+    fun onResourceReady(engineResource: EngineResource)
     fun onLoadFailed()
     fun onPlaceholderColor(color: Int)
 }

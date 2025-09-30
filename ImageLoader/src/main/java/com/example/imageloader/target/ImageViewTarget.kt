@@ -4,27 +4,27 @@ package com.example.imageloader.target
 import android.util.Log
 import android.widget.ImageView
 import androidx.core.view.doOnDetach
-import com.example.imageloader.core.Resource
+import com.example.imageloader.core.EngineResource
 
 
 class ImageViewTarget(private val imageView: ImageView) : Target {
-    private var current: Resource? = null
+    private var current: EngineResource? = null
 
 
-    override fun onResourceReady(resource: Resource) {
+    override fun onResourceReady(engineResource: EngineResource) {
         // release previous
         current?.release()
 
 
-        current = resource
+        current = engineResource
         current?.acquire()
 
 
-        imageView.setImageBitmap(resource.getBitmap())
+        imageView.setImageBitmap(engineResource.getBitmap())
 
 
         imageView.doOnDetach {
-            Log.d("ImageViewTarget", "onResourceReady doOnDetach: ${resource.key}")
+            Log.d("ImageViewTarget", "onResourceReady doOnDetach: ${engineResource.key}")
             current?.release()
             current = null
         }

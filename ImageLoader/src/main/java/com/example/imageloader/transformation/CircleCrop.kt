@@ -6,7 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Shader
-import com.example.imageloader.core.BitmapPool
+import com.example.imageloader.core.abstract.BitmapPool
 
 class CircleCrop : BaseTransformation("CircleCrop") {
     override fun transform(

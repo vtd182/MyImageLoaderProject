@@ -2,15 +2,11 @@ package com.example.imageloader.core
 
 import android.graphics.Bitmap
 import android.util.Log
+import com.example.imageloader.core.abstract.ResourceListener
 import java.util.concurrent.atomic.AtomicBoolean
 
 
-interface ResourceListener {
-    fun onResourceReleased(key: String, resource: Resource)
-}
-
-
-class Resource(
+class EngineResource(
     val key: String,
     private val bitmap: Bitmap,
     private val listener: ResourceListener
