@@ -4,7 +4,6 @@ import android.util.Log
 import com.example.imageloader.cache.ActiveResources
 import com.example.imageloader.cache.DiskCache
 import com.example.imageloader.cache.MemoryCache
-import com.example.imageloader.core.abstract.BitmapPool
 import com.example.imageloader.decode.BitmapDecoder
 import com.example.imageloader.fetcher.DataFetcher
 import com.example.imageloader.target.Target
@@ -19,7 +18,6 @@ class Engine(
     private val memoryCache: MemoryCache,
     private val diskCache: DiskCache,
     private val fetcher: DataFetcher,
-    private val bitmapPool: BitmapPool? = null
 ) {
     companion object {
         private const val TAG = "Engine"
@@ -30,10 +28,6 @@ class Engine(
             val bitmap = resource.getBitmap()
 
             memoryCache.put(key, bitmap)
-
-//            if (bitmap.isMutable && bitmapPool != null) {
-//                bitmapPool.put(bitmap)
-//            }
 
             Log.d(TAG, "Resource released -> moved to cache/pool: $key")
         }
