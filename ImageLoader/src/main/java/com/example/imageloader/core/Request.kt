@@ -5,5 +5,5 @@ data class Request(
     val resizeWidth: Int? = null,
     val resizeHeight: Int? = null,
     val useMemoryCache: Boolean = true,
-    val useDiskCache: Boolean = true
+    val useDiskCache: Boolean = true,
 )

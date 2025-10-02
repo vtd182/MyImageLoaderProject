@@ -1,6 +1,8 @@
 package com.example.imageloader.core
 
 import android.widget.ImageView
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.toColorInt
 import com.example.imageloader.target.ImageViewTarget
 import com.example.imageloader.target.Target
 
@@ -13,6 +15,10 @@ class RequestBuilder(
     private var useMemoryCache: Boolean = true
     private var useDiskCache: Boolean = true
     private var placeholderRes: Int? = null
+    private var placeholderColor: Int? = null
+
+    private var outHeight: Int? = null
+    private var outWidth: Int? = null
 
     fun load(url: String): RequestBuilder {
         this.url = url; return this
@@ -39,12 +45,36 @@ class RequestBuilder(
             useDiskCache
         )
         val target = ImageViewTarget(imageView)
-        // reset state về placeholder
-        placeholderRes?.let { imageView.setImageResource(it) } ?: imageView.setImageDrawable(null)
-        // chạy request
+        
+        // apply overrideSize vào layout
+        if (outWidth != null && outHeight != null) {
+            val params = imageView.layoutParams
+            params.width = outWidth!!
+            params.height = outHeight!!
+            imageView.layoutParams = params
+        }
+
+        when {
+            placeholderRes != null -> imageView.setImageResource(placeholderRes!!)
+            placeholderColor != null -> imageView.setImageDrawable(placeholderColor!!.toDrawable())
+            else -> imageView.setImageDrawable(null)
+        }
         val job = engine.load(request, target)
         RequestManager.track(imageView, job)
     }
+
+    fun placeholder(hex: String?): RequestBuilder {
+        val colorInt = hex?.toColorInt()
+        hex?.let {
+            placeholderColor = try {
+                hex.toColorInt()
+            } catch (e: IllegalArgumentException) {
+                android.graphics.Color.WHITE
+            }
+        }
+        return this
+    }
+
 
     fun into(target: Target) {
         val request = Request(
@@ -63,4 +93,9 @@ class RequestBuilder(
             if (req.resizeWidth != null && req.resizeHeight != null) append("#${req.resizeWidth}x${req.resizeHeight}")
         }
     }
+
+    fun overrideSize(width: Int, height: Int): RequestBuilder {
+        outWidth = width; outHeight = height; return this
+    }
+
 }

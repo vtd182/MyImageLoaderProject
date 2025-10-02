@@ -70,11 +70,11 @@ class Engine(
                 val bytes = fetcher.fetch(req.url)
                 Log.d(TAG, "Fetched bytes size=${bytes.size} for $key")
 
-                val dominantColor = BitmapDecoder.extractDominantColor(bytes)
-
-                withContext(Dispatchers.Main) {
-                    target.onPlaceholderColor(dominantColor)
-                }
+//                val dominantColor = BitmapDecoder.extractDominantColor(bytes)
+//
+//                withContext(Dispatchers.Main) {
+//                    target.onPlaceholderColor(dominantColor)
+//                }
 
                 val bitmap = BitmapDecoder.decode(
                     bytes,

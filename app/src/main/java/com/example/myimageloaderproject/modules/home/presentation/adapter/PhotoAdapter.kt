@@ -28,19 +28,18 @@ class PhotoAdapter : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(Di
         private val tvDescription: TextView = itemView.findViewById(R.id.tvDescription)
 
         fun bind(photo: UnsplashPhoto) {
-            // Load ảnh vuông 400x400
             photo.urls.small?.let {
                 ImageLoader.with(imgPhoto.context)
+                    .overrideSize(400, 400)
+                    .placeholder(photo.color)
                     .load(it)
-                    .resize(400, 400)
+                    .resize(photo.height, photo.width)
                     .into(imgPhoto)
             }
 
-            // Description hoặc fallback
             val desc = photo.description ?: "Photo ${photo.id}"
             tvDescription.text = desc
 
-            // Long click trên description -> toast download
             tvDescription.setOnLongClickListener {
                 Toast.makeText(
                     it.context,
