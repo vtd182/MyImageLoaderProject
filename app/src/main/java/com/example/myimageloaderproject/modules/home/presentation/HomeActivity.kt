@@ -53,7 +53,7 @@ class HomeActivity : AppCompatActivity() {
         btnRetry = findViewById(R.id.btnRetry)
         btnToggleCorner = findViewById(R.id.btnToggleCorner)
 
-        adapter = PhotoAdapter()
+        adapter = PhotoAdapter { spanCount }
 
         layoutManager = GridLayoutManager(this, spanCount)
         recyclerView.layoutManager = layoutManager
@@ -120,14 +120,11 @@ class HomeActivity : AppCompatActivity() {
             }
         })
 
-
         addFpsOverlay()
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        // Luôn để ScaleGestureDetector nhận trước
         scaleGestureDetector.onTouchEvent(ev)
-        // Nếu pinch (>=2 ngón) thì chặn long click
         return if (ev.pointerCount > 1) true else super.dispatchTouchEvent(ev)
     }
 
@@ -160,18 +157,18 @@ class HomeActivity : AppCompatActivity() {
 
     private fun updateSpanCount() {
         layoutManager.spanCount = spanCount
+        adapter.notifyDataSetChanged()
     }
 
     private fun addFpsOverlay() {
         val rootView = findViewById<ViewGroup>(android.R.id.content)
         val fpsOverlay = FPSOverlay(this)
-        val size = resources.displayMetrics.density * 48 // ~48dp vuông
+        val size = resources.displayMetrics.density * 48
         val params = ViewGroup.LayoutParams(size.toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
         fpsOverlay.layoutParams = params
         rootView.addView(fpsOverlay)
     }
 }
-
 
 class FPSOverlay @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null

@@ -13,7 +13,9 @@ import com.example.imageloader.core.ImageLoader
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 
-class PhotoAdapter : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(DiffCallback) {
+class PhotoAdapter(
+    private val spanProvider: () -> Int
+) : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(DiffCallback) {
 
     object DiffCallback : DiffUtil.ItemCallback<UnsplashPhoto>() {
         override fun areItemsTheSame(oldItem: UnsplashPhoto, newItem: UnsplashPhoto) =
@@ -27,13 +29,19 @@ class PhotoAdapter : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(Di
         private val imgPhoto: ImageView = itemView.findViewById(R.id.imgPhoto)
         private val tvDescription: TextView = itemView.findViewById(R.id.tvDescription)
 
-        fun bind(photo: UnsplashPhoto) {
+        fun bind(photo: UnsplashPhoto, spanCount: Int) {
+            val screenWidth = itemView.resources.displayMetrics.widthPixels
+            val spacing = (8 * itemView.resources.displayMetrics.density).toInt() * 2
+            val itemWidth = (screenWidth / spanCount) - spacing
+
+            val ratio = photo.height.toFloat() / photo.width.toFloat()
+            val itemHeight = (itemWidth * ratio).toInt()
+
             photo.urls.small?.let {
                 ImageLoader.with(imgPhoto.context)
-                    .overrideSize(400, 400)
+                    .overrideSize(itemWidth, itemHeight)
                     .placeholder(photo.color)
                     .load(it)
-                    .resize(photo.height, photo.width)
                     .into(imgPhoto)
             }
 
@@ -58,6 +66,6 @@ class PhotoAdapter : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(Di
     }
 
     override fun onBindViewHolder(holder: PhotoViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(getItem(position), spanProvider())
     }
 }
