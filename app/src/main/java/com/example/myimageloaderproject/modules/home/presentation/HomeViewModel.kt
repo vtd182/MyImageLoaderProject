@@ -72,12 +72,17 @@ class HomeViewModel : ViewModel() {
         if (current !is HomeUiState.Data) return
         isLoading = true
         _uiState.value = current.copy(isLoadingMore = true)
+
         viewModelScope.launch {
             try {
                 val newPhotos = getRandomPhotosUseCase(perPage, currentPage + 1)
                 currentPage++
+
+                val merged = (current.photos + newPhotos)
+                    .distinctBy { it.id }
+
                 _uiState.value = HomeUiState.Data(
-                    photos = current.photos + newPhotos,
+                    photos = merged,
                     isRefreshing = false,
                     isLoadingMore = false
                 )
