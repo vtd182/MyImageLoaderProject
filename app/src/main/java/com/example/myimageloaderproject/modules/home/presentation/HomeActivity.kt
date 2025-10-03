@@ -153,7 +153,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun updateSpanCount() {
         layoutManager.spanCount = spanCount
-        recyclerView.requestLayout()
+        adapter.notifyItemRangeChanged(0, adapter.itemCount)
     }
 
 
