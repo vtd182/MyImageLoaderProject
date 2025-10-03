@@ -1,10 +1,6 @@
 package com.example.myimageloaderproject.modules.home.presentation
 
-import android.content.Context
-import android.graphics.Color
 import android.os.Bundle
-import android.util.AttributeSet
-import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -15,12 +11,12 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.example.myimageloaderproject.R
+import com.example.myimageloaderproject.core.customView.FPSOverlay
 import com.example.myimageloaderproject.modules.home.presentation.adapter.PhotoAdapter
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -157,8 +153,9 @@ class HomeActivity : AppCompatActivity() {
 
     private fun updateSpanCount() {
         layoutManager.spanCount = spanCount
-        adapter.notifyDataSetChanged()
+        recyclerView.requestLayout()
     }
+
 
     private fun addFpsOverlay() {
         val rootView = findViewById<ViewGroup>(android.R.id.content)
@@ -170,34 +167,4 @@ class HomeActivity : AppCompatActivity() {
     }
 }
 
-class FPSOverlay @JvmOverloads constructor(
-    context: Context, attrs: AttributeSet? = null
-) : androidx.appcompat.widget.AppCompatTextView(context, attrs), Choreographer.FrameCallback {
-    private var lastTime = System.nanoTime()
-    private var frameCount = 0
 
-    init {
-        setBackgroundColor("#88000000".toColorInt())
-        setTextColor(Color.WHITE)
-        textSize = 12f
-        Choreographer.getInstance().postFrameCallback(this)
-    }
-
-    override fun doFrame(frameTimeNanos: Long) {
-        frameCount++
-        val now = System.nanoTime()
-        val delta = (now - lastTime) / 1_000_000_000.0
-        if (delta >= 1.0) {
-            val fps = frameCount / delta
-            text = context.getString(R.string.fps_display, fps.toInt())
-            frameCount = 0
-            lastTime = now
-        }
-        Choreographer.getInstance().postFrameCallback(this)
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        Choreographer.getInstance().removeFrameCallback(this)
-    }
-}
