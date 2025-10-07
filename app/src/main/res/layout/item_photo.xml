@@ -2,17 +2,15 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="4dp">
+    android:orientation="vertical">
 
     <ImageView
         android:id="@+id/imgPhoto"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="wrap_content"
         android:adjustViewBounds="true"
-        android:background="#EEE"
-        android:scaleType="centerCrop" />
+        android:background="@android:color/transparent"
+        android:contentDescription="@string/app_name" />
 
     <TextView
         android:id="@+id/tvDescription"
