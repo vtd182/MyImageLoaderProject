@@ -5,6 +5,7 @@ import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
 import com.example.imageloader.target.ImageViewTarget
 import com.example.imageloader.target.Target
+import com.example.imageloader.transformation.Transformation
 
 class RequestBuilder(
     private val engine: Engine,
@@ -16,9 +17,14 @@ class RequestBuilder(
     private var useDiskCache: Boolean = true
     private var placeholderRes: Int? = null
     private var placeholderColor: Int? = null
-
     private var outHeight: Int? = null
     private var outWidth: Int? = null
+    private val transformations = mutableListOf<Transformation>()
+
+    fun transform(vararg transformations: Transformation): RequestBuilder {
+        this.transformations.addAll(transformations)
+        return this
+    }
 
     fun load(url: String): RequestBuilder {
         this.url = url; return this
@@ -42,10 +48,13 @@ class RequestBuilder(
             resizeWidth,
             resizeHeight,
             useMemoryCache,
-            useDiskCache
+            useDiskCache,
+            transformations.toList(),
+            outWidth,
+            outHeight
         )
         val target = ImageViewTarget(imageView)
-        
+
         // apply overrideSize vào layout
         if (outWidth != null && outHeight != null) {
             val params = imageView.layoutParams
@@ -64,7 +73,6 @@ class RequestBuilder(
     }
 
     fun placeholder(hex: String?): RequestBuilder {
-        val colorInt = hex?.toColorInt()
         hex?.let {
             placeholderColor = try {
                 hex.toColorInt()
@@ -82,16 +90,12 @@ class RequestBuilder(
             resizeWidth,
             resizeHeight,
             useMemoryCache,
-            useDiskCache
+            useDiskCache,
+            transformations.toList(),
+            outWidth,
+            outHeight
         )
         engine.load(request, target)
-    }
-
-    private fun buildKey(req: Request): String {
-        return buildString {
-            append(req.url)
-            if (req.resizeWidth != null && req.resizeHeight != null) append("#${req.resizeWidth}x${req.resizeHeight}")
-        }
     }
 
     fun overrideSize(width: Int, height: Int): RequestBuilder {

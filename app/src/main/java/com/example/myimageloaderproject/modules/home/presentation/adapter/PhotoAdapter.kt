@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.imageloader.core.ImageLoader
+import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 
@@ -31,7 +32,7 @@ class PhotoAdapter(
 
         fun bind(photo: UnsplashPhoto, spanCount: Int) {
             val screenWidth = itemView.resources.displayMetrics.widthPixels
-            val spacing = (8 * itemView.resources.displayMetrics.density).toInt() * 2
+            val spacing = (8 * itemView.resources.displayMetrics.density).toInt()
             val itemWidth = (screenWidth / spanCount) - spacing
 
             val ratio = photo.height.toFloat() / photo.width.toFloat()
@@ -42,6 +43,7 @@ class PhotoAdapter(
                     .overrideSize(itemWidth, itemHeight)
                     .placeholder(photo.color)
                     .load(it)
+                    .transform(CenterCropRoundedCorners(50f))
                     .into(imgPhoto)
             }
 

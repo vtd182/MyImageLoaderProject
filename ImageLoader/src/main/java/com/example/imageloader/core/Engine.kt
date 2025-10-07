@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.imageloader.cache.ActiveResources
 import com.example.imageloader.cache.DiskCache
 import com.example.imageloader.cache.MemoryCache
+import com.example.imageloader.core.abstract.BitmapPool
 import com.example.imageloader.decode.BitmapDecoder
 import com.example.imageloader.fetcher.DataFetcher
 import com.example.imageloader.target.Target
@@ -12,12 +13,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 
 class Engine(
     private val activeResources: ActiveResources,
     private val memoryCache: MemoryCache,
     private val diskCache: DiskCache,
     private val fetcher: DataFetcher,
+    private val bitmapPool: BitmapPool,
 ) {
     companion object {
         private const val TAG = "Engine"
@@ -76,12 +79,21 @@ class Engine(
 //                    target.onPlaceholderColor(dominantColor)
 //                }
 
-                val bitmap = BitmapDecoder.decode(
+                var bitmap = BitmapDecoder.decode(
                     bytes,
                     req.resizeWidth ?: 0,
                     req.resizeHeight ?: 0,
                 )
                 Log.d(TAG, "Decoded bitmap w=${bitmap.width} h=${bitmap.height} for $key")
+
+                req.transformations.forEach { transform ->
+                    bitmap = transform.transform(
+                        bitmapPool,
+                        bitmap,
+                        req.outWidth ?: req.resizeWidth ?: bitmap.width,
+                        req.outHeight ?: req.resizeHeight ?: bitmap.height
+                    )
+                }
 
                 val res = EngineResource(key, bitmap, activeResources)
                 activeResources.put(key, res)
@@ -102,11 +114,35 @@ class Engine(
     }
 
     private fun buildKey(req: Request): String {
-        return buildString {
+        val rawKey = buildString {
             append(req.url)
+
             if (req.resizeWidth != null && req.resizeHeight != null) {
-                append("#${req.resizeWidth}x${req.resizeHeight}")
+                append("#resize=${req.resizeWidth}x${req.resizeHeight}")
             }
+
+            if (req.outWidth != null && req.outHeight != null) {
+                append("#out=${req.outWidth}x${req.outHeight}")
+            }
+
+            if (req.transformations.isNotEmpty()) {
+                append("#transforms=")
+                req.transformations.forEach {
+                    append(it.key())
+                    append(";")
+                }
+            }
+
+            append("#useMemory=${req.useMemoryCache}")
+            append("#useDisk=${req.useDiskCache}")
         }
+
+        return rawKey.md5()
     }
+}
+
+private fun String.md5(): String {
+    val digest = MessageDigest.getInstance("MD5")
+    val bytes = digest.digest(toByteArray())
+    return bytes.joinToString("") { "%02x".format(it) }
 }

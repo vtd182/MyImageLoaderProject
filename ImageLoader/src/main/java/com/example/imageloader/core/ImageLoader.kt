@@ -14,7 +14,7 @@ class ImageLoader private constructor(context: Context) {
     private val bitmapPool = LruBitmapPool((Runtime.getRuntime().maxMemory() / 8))
     private val memoryCache =
         MemoryCache((Runtime.getRuntime().maxMemory() / 8).toInt(), bitmapPool)
-    val engine = Engine(activeResources, memoryCache, diskCache, fetcher)
+    val engine = Engine(activeResources, memoryCache, diskCache, fetcher, bitmapPool)
 
     companion object {
         @Volatile
