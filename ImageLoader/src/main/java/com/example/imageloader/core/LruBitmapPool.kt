@@ -6,54 +6,55 @@ import com.example.imageloader.core.abstract.BitmapPool
 import java.util.ArrayDeque
 
 class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
-    private data class Key(val size: Int, val config: Config)
+
+    private data class Key(val width: Int, val height: Int, val config: Config)
 
     private val buckets = LinkedHashMap<Key, ArrayDeque<Bitmap>>(16, 0.75f, true)
     private var currentSize = 0L
 
     @Synchronized
     override fun get(width: Int, height: Int, config: Config): Bitmap? {
-        val size = computeSizeBytes(width, height, config)
-        val key = Key(size, config)
-        val deque = buckets[key]
-        val bmp = deque?.pollFirst()
-        if (bmp != null) {
-            currentSize -= bmp.allocationByteCount
-            if (bmp.isRecycled || !bmp.isMutable) {
-                return get(width, height, config)
+        val exactKey = Key(width, height, config)
+        val exactDeque = buckets[exactKey]
+
+        exactDeque?.pollFirst()?.let { bmp ->
+            if (isReusable(bmp)) {
+                currentSize -= bmp.allocationByteCount
+                return bmp
             }
-            return bmp
         }
 
         val iter = buckets.entries.iterator()
         while (iter.hasNext()) {
-            val entry = iter.next()
-            if (entry.key.config == config && entry.key.size >= size) {
-                val candidate = entry.value.pollFirst()
-                if (candidate != null) {
+            val (key, deque) = iter.next()
+            if (key.config == config && key.width >= width && key.height >= height) {
+                val candidate = deque.pollFirst()
+                if (candidate != null && isReusable(candidate)) {
                     currentSize -= candidate.allocationByteCount
-                    if (candidate.isRecycled || !candidate.isMutable) {
-                        continue
+
+                    if (candidate.width != width || candidate.height != height) {
+                        try {
+                            candidate.reconfigure(width, height, config)
+                        } catch (e: Exception) {
+                            candidate.recycle()
+                            continue
+                        }
                     }
                     return candidate
                 }
             }
         }
+
         return null
     }
 
     @Synchronized
     override fun put(bitmap: Bitmap) {
-        if (bitmap.isRecycled || !bitmap.isMutable) return
-        val size = try {
-            bitmap.allocationByteCount
-        } catch (t: Throwable) {
-            bitmap.byteCount
-        }
-        if (size > maxSizeBytes / 2) {
-            return
-        }
-        val key = Key(size, bitmap.config ?: Config.ARGB_8888)
+        if (!isReusable(bitmap)) return
+        val size = bitmap.safeByteCount()
+        if (size > maxSizeBytes / 2) return
+
+        val key = Key(bitmap.width, bitmap.height, bitmap.config ?: Config.ARGB_8888)
         val deque = buckets.getOrPut(key) { ArrayDeque() }
         deque.addFirst(bitmap)
         currentSize += size
@@ -63,12 +64,24 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
     @Synchronized
     override fun clear() {
         for ((_, deque) in buckets) {
-            for (b in deque) {
-                if (!b.isRecycled) b.recycle()
-            }
+            deque.forEach { if (!it.isRecycled) it.recycle() }
         }
         buckets.clear()
         currentSize = 0L
+    }
+
+    override fun size(): Long = currentSize
+
+    private fun isReusable(bitmap: Bitmap): Boolean {
+        return !bitmap.isRecycled && bitmap.isMutable
+    }
+
+    private fun Bitmap.safeByteCount(): Int {
+        return try {
+            allocationByteCount
+        } catch (_: Throwable) {
+            byteCount
+        }
     }
 
     private fun trimToSize(maxSize: Long) {
@@ -78,28 +91,10 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
             val deque = entry.value
             while (deque.isNotEmpty() && currentSize > maxSize) {
                 val b = deque.removeLast()
-                currentSize -= try {
-                    b.allocationByteCount
-                } catch (t: Throwable) {
-                    b.byteCount
-                }
+                currentSize -= b.safeByteCount()
                 if (!b.isRecycled) b.recycle()
             }
             if (deque.isEmpty()) it.remove()
         }
     }
-
-    private fun computeSizeBytes(width: Int, height: Int, config: Config): Int {
-        val bytesPerPixel = when (config) {
-            Config.ALPHA_8 -> 1
-            Config.RGB_565 -> 2
-            Config.ARGB_4444 -> 2
-            Config.ARGB_8888 -> 4
-            else -> 4
-        }
-        val s = width * height * bytesPerPixel
-        return s
-    }
-
-    override fun size(): Long = currentSize
 }
