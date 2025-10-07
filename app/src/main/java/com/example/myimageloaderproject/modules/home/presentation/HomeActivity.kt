@@ -12,8 +12,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.core.customView.FPSOverlay
@@ -30,13 +30,12 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var errorLayout: View
     private lateinit var btnRetry: Button
     private lateinit var btnToggleCorner: Button
-    private var spanCount = 2
-    private lateinit var layoutManager: GridLayoutManager
     private lateinit var swipeRefresh: SwipeRefreshLayout
-
     private lateinit var footerLoading: View
 
     private lateinit var scaleGestureDetector: ScaleGestureDetector
+    private var spanCount = 2
+    private lateinit var layoutManager: StaggeredGridLayoutManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,19 +47,18 @@ class HomeActivity : AppCompatActivity() {
         errorLayout = findViewById(R.id.errorLayout)
         btnRetry = findViewById(R.id.btnRetry)
         btnToggleCorner = findViewById(R.id.btnToggleCorner)
+        swipeRefresh = findViewById(R.id.swipeRefresh)
+        footerLoading = findViewById(R.id.footerLoading)
 
         adapter = PhotoAdapter { spanCount }
 
-        layoutManager = GridLayoutManager(this, spanCount)
+        layoutManager = StaggeredGridLayoutManager(spanCount, StaggeredGridLayoutManager.VERTICAL)
         recyclerView.layoutManager = layoutManager
         recyclerView.adapter = adapter
-        footerLoading = findViewById(R.id.footerLoading)
 
-        // Scale gesture detector
         scaleGestureDetector = ScaleGestureDetector(
             this,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-
                 private var accumulatedScale = 1f
 
                 override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -86,7 +84,6 @@ class HomeActivity : AppCompatActivity() {
             Toast.makeText(this, "Toggle corner function (TODO)", Toast.LENGTH_SHORT).show()
         }
 
-        swipeRefresh = findViewById(R.id.swipeRefresh)
         swipeRefresh.setOnRefreshListener {
             viewModel.refresh()
         }
@@ -97,22 +94,10 @@ class HomeActivity : AppCompatActivity() {
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(rv, dx, dy)
-                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                val lastVisible = layoutManager.findLastVisibleItemPositions(null).maxOrNull() ?: 0
                 if (lastVisible >= adapter.itemCount - 3) {
                     viewModel.loadMorePhotos()
                 }
-            }
-        })
-
-        recyclerView.addItemDecoration(object : RecyclerView.ItemDecoration() {
-            private val space = (8 * resources.displayMetrics.density).toInt()
-            override fun getItemOffsets(
-                outRect: android.graphics.Rect,
-                view: View,
-                parent: RecyclerView,
-                state: RecyclerView.State
-            ) {
-                outRect.set(space, space, space, space)
             }
         })
 
@@ -153,9 +138,9 @@ class HomeActivity : AppCompatActivity() {
 
     private fun updateSpanCount() {
         layoutManager.spanCount = spanCount
+        layoutManager.invalidateSpanAssignments()
         adapter.notifyItemRangeChanged(0, adapter.itemCount)
     }
-
 
     private fun addFpsOverlay() {
         val rootView = findViewById<ViewGroup>(android.R.id.content)
@@ -166,5 +151,3 @@ class HomeActivity : AppCompatActivity() {
         rootView.addView(fpsOverlay)
     }
 }
-
-
