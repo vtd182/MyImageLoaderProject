@@ -67,22 +67,40 @@ class HomeViewModel : ViewModel() {
     }
 
     fun loadMorePhotos() {
+        // Nếu đang load thì không làm gì
         if (isLoading) return
         val current = _uiState.value
         if (current !is HomeUiState.Data) return
+
         isLoading = true
         _uiState.value = current.copy(isLoadingMore = true)
 
         viewModelScope.launch {
             try {
-                val newPhotos = getRandomPhotosUseCase(perPage, currentPage + 1)
+                val newPhotosRaw = getRandomPhotosUseCase(perPage, currentPage + 1)
                 currentPage++
 
-                val merged = (current.photos + newPhotos)
-                    .distinctBy { it.id }
+                val newPhotos = if (newPhotosRaw.size > 3) {
+                    newPhotosRaw.drop(3)
+                } else {
+                    emptyList()
+                }
+
+                val finalList = current.photos.toMutableList()
+                val chunkSize = 5
+
+                for (chunk in newPhotos.chunked(chunkSize)) {
+                    finalList.addAll(chunk)
+                    _uiState.value = HomeUiState.Data(
+                        photos = finalList.toList(),
+                        isRefreshing = false,
+                        isLoadingMore = true
+                    )
+                    kotlinx.coroutines.delay(120)
+                }
 
                 _uiState.value = HomeUiState.Data(
-                    photos = merged,
+                    photos = finalList,
                     isRefreshing = false,
                     isLoadingMore = false
                 )

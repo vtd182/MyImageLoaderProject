@@ -1,7 +1,6 @@
 package com.example.imageloader.target
 
 
-import android.util.Log
 import android.widget.ImageView
 import androidx.core.view.doOnDetach
 import com.example.imageloader.core.EngineResource
@@ -24,7 +23,6 @@ class ImageViewTarget(private val imageView: ImageView) : Target {
 
 
         imageView.doOnDetach {
-            Log.d("ImageViewTarget", "onResourceReady doOnDetach: ${engineResource.key}")
             current?.release()
             current = null
         }
@@ -37,6 +35,10 @@ class ImageViewTarget(private val imageView: ImageView) : Target {
 
     override fun onPlaceholderColor(color: Int) {
         imageView.setBackgroundColor(color)
+    }
+
+    override fun isValidFor(key: String): Boolean {
+        return current?.key == key
     }
 
     fun clear() {

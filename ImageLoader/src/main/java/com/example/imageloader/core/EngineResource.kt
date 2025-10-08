@@ -24,10 +24,10 @@ class EngineResource(
 
     @Synchronized
     fun release() {
-        Log.d("Resource", "refCount=$refCount release: $key ")
         check(refCount > 0) { "Cannot release a resource that is not acquired" }
         refCount--
         if (refCount == 0 && released.compareAndSet(false, true)) {
+            Log.d("Resource", "release: $key ")
             listener.onResourceReleased(key, this)
         }
     }

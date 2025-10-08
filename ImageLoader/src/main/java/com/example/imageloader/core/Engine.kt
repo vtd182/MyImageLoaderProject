@@ -11,6 +11,7 @@ import com.example.imageloader.target.Target
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
@@ -26,17 +27,17 @@ class Engine(
         private const val TAG = "Engine"
     }
 
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
         activeResources.setOnResourceReleased { key, resource ->
             val bitmap = resource.getBitmap()
-
             memoryCache.put(key, bitmap)
-
-            Log.d(TAG, "Resource released -> moved to cache/pool: $key")
+            Log.d(TAG, "Resource released -> moved to memoryCache: $key")
         }
     }
 
-    fun load(req: Request, target: Target): Job? {
+    fun load(req: Request, target: Target): Job {
         val key = buildKey(req)
         Log.d(TAG, "Start load: $key")
 
@@ -44,7 +45,7 @@ class Engine(
         activeResources.get(key)?.let {
             Log.d(TAG, "Hit ActiveResources: $key")
             target.onResourceReady(it)
-            return null
+            return Job().apply { complete() }
         }
 
         // 2. Memory Cache
@@ -53,7 +54,7 @@ class Engine(
             val res = EngineResource(key, bitmap, activeResources)
             activeResources.put(key, res)
             target.onResourceReady(res)
-            return null
+            return Job().apply { complete() }
         }
 
         // 3. Disk Cache
@@ -63,45 +64,52 @@ class Engine(
             val res = EngineResource(key, bitmap, activeResources)
             activeResources.put(key, res)
             target.onResourceReady(res)
-            return null
+            return Job().apply { complete() }
         }
 
-        // 4. Network
+        // 4. Network fetch + decode + transform
         Log.d(TAG, "Miss cache -> fetch from network: $key")
-        return CoroutineScope(Dispatchers.IO).launch {
+
+        return engineScope.launch {
             try {
+                // Fetch: I/O bound
                 val bytes = fetcher.fetch(req.url)
                 Log.d(TAG, "Fetched bytes size=${bytes.size} for $key")
 
-//                val dominantColor = BitmapDecoder.extractDominantColor(bytes)
-//
-//                withContext(Dispatchers.Main) {
-//                    target.onPlaceholderColor(dominantColor)
-//                }
-
+                // Decode: I/O bound
                 var bitmap = BitmapDecoder.decode(
                     bytes,
                     req.resizeWidth ?: 0,
                     req.resizeHeight ?: 0,
                 )
+
                 Log.d(TAG, "Decoded bitmap w=${bitmap.width} h=${bitmap.height} for $key")
 
-                req.transformations.forEach { transform ->
-                    bitmap = transform.transform(
-                        bitmapPool,
-                        bitmap,
-                        req.outWidth ?: req.resizeWidth ?: bitmap.width,
-                        req.outHeight ?: req.resizeHeight ?: bitmap.height
-                    )
+                // Transform: CPU bound Dispatchers.Default
+                if (req.transformations.isNotEmpty()) {
+                    bitmap = withContext(Dispatchers.Default) {
+                        req.transformations.fold(bitmap) { bmp, transform ->
+                            transform.transform(
+                                bitmapPool,
+                                bmp,
+                                req.outWidth ?: req.resizeWidth ?: bmp.width,
+                                req.outHeight ?: req.resizeHeight ?: bmp.height
+                            )
+                        }
+                    }
+                    Log.d(TAG, "Applied ${req.transformations.size} transforms for $key")
                 }
 
+                // Wrap Resource
                 val res = EngineResource(key, bitmap, activeResources)
                 activeResources.put(key, res)
 
+                // Cache
                 if (req.useDiskCache) {
                     diskCache.put(key, bitmap)
                 }
 
+                // Deliver: UI bound
                 withContext(Dispatchers.Main) {
                     Log.d(TAG, "Deliver to target: $key")
                     target.onResourceReady(res)
@@ -117,13 +125,11 @@ class Engine(
         val rawKey = buildString {
             append(req.url)
 
-            if (req.resizeWidth != null && req.resizeHeight != null) {
+            if (req.resizeWidth != null && req.resizeHeight != null)
                 append("#resize=${req.resizeWidth}x${req.resizeHeight}")
-            }
 
-            if (req.outWidth != null && req.outHeight != null) {
+            if (req.outWidth != null && req.outHeight != null)
                 append("#out=${req.outWidth}x${req.outHeight}")
-            }
 
             if (req.transformations.isNotEmpty()) {
                 append("#transforms=")
@@ -136,7 +142,6 @@ class Engine(
             append("#useMemory=${req.useMemoryCache}")
             append("#useDisk=${req.useDiskCache}")
         }
-
         return rawKey.md5()
     }
 }

@@ -6,15 +6,18 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.example.imageloader.core.RequestManager
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.core.customView.FPSOverlay
 import com.example.myimageloaderproject.modules.home.presentation.adapter.PhotoAdapter
@@ -90,7 +93,6 @@ class HomeActivity : AppCompatActivity() {
 
         observeData()
         viewModel.loadPhotos()
-
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(rv, dx, dy)
@@ -100,6 +102,36 @@ class HomeActivity : AppCompatActivity() {
                 }
             }
         })
+
+        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                super.onScrollStateChanged(rv, newState)
+                when (newState) {
+                    RecyclerView.SCROLL_STATE_SETTLING -> {
+                        RequestManager.pauseAll()
+                    }
+
+                    RecyclerView.SCROLL_STATE_IDLE -> {
+                        // load visible
+                        val visibleViews = mutableListOf<ImageView>()
+                        for (i in 0 until rv.childCount) {
+                            val child = rv.getChildAt(i)
+                            val img = child?.findViewById<ImageView>(R.id.imgPhoto)
+                            if (img != null && child.isVisible) {
+                                visibleViews.add(img)
+                            }
+                        }
+                        RequestManager.resumeVisibleOnly(visibleViews)
+                    }
+
+                    // load full
+//                    RecyclerView.SCROLL_STATE_IDLE -> {
+//                        RequestManager.resumeAll()
+//                    }
+                }
+            }
+        })
+
 
         addFpsOverlay()
     }

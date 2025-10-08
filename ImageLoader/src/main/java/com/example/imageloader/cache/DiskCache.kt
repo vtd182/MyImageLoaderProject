@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
 import java.io.FileOutputStream
-import java.security.MessageDigest
 
 class DiskCache(
     context: Context,
@@ -13,21 +12,15 @@ class DiskCache(
 ) {
     private val cacheDir = File(context.cacheDir, "image_cache").apply { mkdirs() }
 
-    private fun hashKey(url: String): String {
-        val digest = MessageDigest.getInstance("MD5")
-        digest.update(url.toByteArray())
-        return digest.digest().joinToString("") { "%02x".format(it) }
-    }
-
     @Synchronized
-    fun get(url: String): Bitmap? {
-        val file = File(cacheDir, hashKey(url))
+    fun get(key: String): Bitmap? {
+        val file = File(cacheDir, key)
         return if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
     }
 
     @Synchronized
-    fun put(url: String, bitmap: Bitmap): Boolean {
-        val file = File(cacheDir, hashKey(url))
+    fun put(key: String, bitmap: Bitmap): Boolean {
+        val file = File(cacheDir, key)
         if (file.exists()) return true
 
         val estimatedSize = bitmap.byteCount.toLong()

@@ -68,8 +68,13 @@ class RequestBuilder(
             placeholderColor != null -> imageView.setImageDrawable(placeholderColor!!.toDrawable())
             else -> imageView.setImageDrawable(null)
         }
-        val job = engine.load(request, target)
-        RequestManager.track(imageView, job)
+        val reload = { into(imageView) }
+
+        val job = if (!RequestManager.isPaused()) {
+            engine.load(request, target)
+        } else null
+
+        RequestManager.track(imageView, job, onResume = reload)
     }
 
     fun placeholder(hex: String?): RequestBuilder {

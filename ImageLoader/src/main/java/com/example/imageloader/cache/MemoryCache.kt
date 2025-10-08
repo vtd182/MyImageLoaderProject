@@ -26,7 +26,5 @@ class MemoryCache(
     }
 
     fun get(key: String): Bitmap? = cache.get(key)
-    fun put(key: String, bitmap: Bitmap) = cache.put(key, bitmap)
-    fun remove(key: String) = cache.remove(key)
-    fun clear() = cache.evictAll()
+    fun put(key: String, bitmap: Bitmap): Bitmap? = cache.put(key, bitmap)
 }
