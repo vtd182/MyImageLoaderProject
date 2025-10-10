@@ -1,4 +1,5 @@
 package com.example.myimageloaderproject.di
+
 import com.example.myimageloaderproject.modules.home.data.remote.UnsplashApi
 import com.example.myimageloaderproject.modules.home.data.remote.UnsplashApiImpl
 import com.example.myimageloaderproject.modules.home.data.repository.PhotoRepositoryImpl
@@ -12,11 +13,15 @@ object Injector {
     private const val ACCESS_KEY = "WisKyjbbno1lYFrCkYyzZUhiffEkjFdEEAC-kQvMs3I"
     private const val ACCESS_KEY_V2 = "jJgrH_pPfg_c-CROedmueKKsE_F7xvbUvXDoKZemxYs"
 
-    private val httpClient by lazy { HttpClient(BASE_URL, ACCESS_KEY) }
+    private val httpClient by lazy { HttpClient(BASE_URL, ACCESS_KEY_V2) }
 
     private val unsplashApi: UnsplashApi by lazy { UnsplashApiImpl(httpClient) }
 
     private val photoRepository: PhotoRepository by lazy { PhotoRepositoryImpl(unsplashApi) }
 
-    val getRandomPhotosUseCase: GetRandomPhotosUseCase by lazy { GetRandomPhotosUseCase(photoRepository) }
+    val getRandomPhotosUseCase: GetRandomPhotosUseCase by lazy {
+        GetRandomPhotosUseCase(
+            photoRepository
+        )
+    }
 }

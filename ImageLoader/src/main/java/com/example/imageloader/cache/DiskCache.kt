@@ -3,14 +3,15 @@ package com.example.imageloader.cache
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 
 class DiskCache(
     context: Context,
-    private val maxSizeBytes: Long = 250L * 1024 * 1024 // 250MB
+    private val maxSizeBytes: Long = 150L * 1000 * 1000 // 150MB
 ) {
-    private val cacheDir = File(context.cacheDir, "image_cache").apply { mkdirs() }
+    private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
 
     @Synchronized
     fun get(key: String): Bitmap? {
@@ -26,6 +27,10 @@ class DiskCache(
         val estimatedSize = bitmap.byteCount.toLong()
         val total = cacheDir.listFiles()?.sumOf { it.length() } ?: 0
         if (total + estimatedSize > maxSizeBytes) {
+            Log.wtf(
+                "DiskCache",
+                "Trim with total: $total, estimatedSize: $estimatedSize, maxSizeBytes: $maxSizeBytes"
+            )
             trimCache((total + estimatedSize) - maxSizeBytes)
         }
 
@@ -34,6 +39,7 @@ class DiskCache(
             FileOutputStream(tempFile).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
+            Log.wtf("DiskCache", "total affter: $total ")
             tempFile.renameTo(file)
         } catch (e: Exception) {
             tempFile.delete()
@@ -47,6 +53,7 @@ class DiskCache(
     }
 
     private fun trimCache(requiredFree: Long) {
+        Log.wtf("DiskCache", "trimCache: $requiredFree")
         var freed = 0L
         cacheDir.listFiles()
             ?.sortedBy { it.lastModified() }

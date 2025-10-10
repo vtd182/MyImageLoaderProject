@@ -93,17 +93,18 @@ class HomeActivity : AppCompatActivity() {
 
         observeData()
         viewModel.loadPhotos()
+
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            private var lastDy = 0
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(rv, dx, dy)
+                lastDy = dy
                 val lastVisible = layoutManager.findLastVisibleItemPositions(null).maxOrNull() ?: 0
                 if (lastVisible >= adapter.itemCount - 3) {
                     viewModel.loadMorePhotos()
                 }
             }
-        })
 
-        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
                 super.onScrollStateChanged(rv, newState)
                 when (newState) {
