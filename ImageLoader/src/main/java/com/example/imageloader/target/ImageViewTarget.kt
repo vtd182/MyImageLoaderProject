@@ -11,17 +11,29 @@ class ImageViewTarget(private val imageView: ImageView) : Target {
 
 
     override fun onResourceReady(engineResource: EngineResource) {
-        // release previous
+        // clear old bitmap reference in ImageView
+        imageView.setImageDrawable(null)
+
+        // release previous resource safely
         current?.release()
 
-
+        // set new resource
         current = engineResource
         current?.acquire()
 
+        val bitmap = engineResource.getBitmap()
+        if (bitmap.isRecycled) {
+            android.util.Log.w("ImageViewTarget", "⚠️ Bitmap already recycled, skip setting image")
+            return
+        }
 
-        imageView.setImageBitmap(engineResource.getBitmap())
+        try {
+            imageView.setImageBitmap(bitmap)
+        } catch (e: Exception) {
+            android.util.Log.e("ImageViewTarget", "❌ Failed to set bitmap", e)
+        }
 
-
+        // clear on detach
         imageView.doOnDetach {
             current?.release()
             current = null
