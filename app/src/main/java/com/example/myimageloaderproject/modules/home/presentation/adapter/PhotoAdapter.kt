@@ -11,12 +11,19 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.imageloader.core.ImageLoader
 import com.example.imageloader.core.RequestManager
+import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 
 class PhotoAdapter(
     private val spanProvider: () -> Int
 ) : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(DiffCallback) {
+
+    private var cornerEnabled = false
+
+    fun setCornerEnabled(enabled: Boolean) {
+        cornerEnabled = enabled
+    }
 
     object DiffCallback : DiffUtil.ItemCallback<UnsplashPhoto>() {
         override fun areItemsTheSame(oldItem: UnsplashPhoto, newItem: UnsplashPhoto) =
@@ -40,12 +47,17 @@ class PhotoAdapter(
             val itemHeight = (itemWidth * ratio).toInt()
 
             photo.urls.small?.let {
-                ImageLoader.with(imgPhoto.context)
+                val request = ImageLoader.with(imgPhoto.context)
                     .overrideSize(itemWidth, itemHeight)
                     .placeholder(photo.color)
                     .resize(400, 400)
                     .load(it)
-                    .into(imgPhoto)
+
+                if (cornerEnabled) {
+                    request.transform(CenterCropRoundedCorners(40f))
+                }
+
+                request.into(imgPhoto)
             }
 
             val desc = photo.description ?: "Photo ${photo.id}"

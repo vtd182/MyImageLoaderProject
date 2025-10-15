@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class HomeActivity : AppCompatActivity() {
-
+    private var adapterCornerEnabled = false
     private val viewModel: HomeViewModel by viewModels()
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: PhotoAdapter
@@ -109,9 +109,7 @@ class HomeActivity : AppCompatActivity() {
                 super.onScrollStateChanged(rv, newState)
                 when (newState) {
                     RecyclerView.SCROLL_STATE_SETTLING -> {
-                        if (lastDy > 0) {
-                            RequestManager.pauseAll()
-                        }
+                        RequestManager.pauseAll()
                     }
 
                     RecyclerView.SCROLL_STATE_IDLE -> {
@@ -134,6 +132,15 @@ class HomeActivity : AppCompatActivity() {
                 }
             }
         })
+
+        btnToggleCorner.setOnClickListener {
+            val enabled = !adapterCornerEnabled
+            adapter.setCornerEnabled(enabled)
+            adapter.notifyItemRangeChanged(0, adapter.itemCount)
+            val msg = if (enabled) "Đã bật bo góc ảnh" else "Đã tắt bo góc ảnh"
+            adapterCornerEnabled = enabled
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
 
 
         addFpsOverlay()
