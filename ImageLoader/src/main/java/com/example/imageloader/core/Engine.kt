@@ -8,6 +8,7 @@ import com.example.imageloader.core.abstract.BitmapPool
 import com.example.imageloader.decode.BitmapDecoder
 import com.example.imageloader.fetcher.DataFetcher
 import com.example.imageloader.target.Target
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
+import kotlin.system.measureTimeMillis
 
 class Engine(
     private val activeResources: ActiveResources,
@@ -39,27 +41,32 @@ class Engine(
 
     fun load(req: Request, target: Target): Job {
         val key = buildKey(req)
-        Log.d(TAG, "Start load: $key")
+        val startTime = System.currentTimeMillis()
 
-        // 1. Active Resources
+        fun logDuration(stage: String) {
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.d(TAG, "[$stage] Completed in ${elapsed}ms -> $key")
+        }
+
+        // 1️⃣ Active Resources
         activeResources.get(key)?.let {
-            Log.d(TAG, "Hit ActiveResources: $key")
+            logDuration("ActiveResource")
             target.onResourceReady(it)
             return Job().apply { complete() }
         }
 
-        // 2. Memory Cache
+        // 2️⃣ Memory Cache
         memoryCache.get(key)?.let { bitmap ->
-            Log.d(TAG, "Hit MemoryCache: $key")
+            logDuration("MemoryCache")
             val res = EngineResource(key, bitmap, activeResources)
             activeResources.put(key, res)
             target.onResourceReady(res)
             return Job().apply { complete() }
         }
 
-        // 3. Disk Cache
+        // 3️⃣ Disk Cache
         diskCache.get(key)?.let { bitmap ->
-            Log.d(TAG, "Hit DiskCache: $key")
+            logDuration("DiskCache")
             memoryCache.put(key, bitmap)
             val res = EngineResource(key, bitmap, activeResources)
             activeResources.put(key, res)
@@ -67,56 +74,75 @@ class Engine(
             return Job().apply { complete() }
         }
 
-        // 4. Network fetch + decode + transform
+        // 4️⃣ Network fetch + decode + transform
         Log.d(TAG, "Miss cache -> fetch from network: $key")
 
         return engineScope.launch {
             try {
-                // Fetch: I/O bound
-                val bytes = fetcher.fetch(req.url)
-                Log.d(TAG, "Fetched bytes size=${bytes.size} for $key")
+                var stageStart: Long
+                var elapsed: Long
 
-                // Decode: I/O bound
+                // 🕐 Fetch
+                stageStart = System.currentTimeMillis()
+                val bytes = fetcher.fetch(req.url)
+                elapsed = System.currentTimeMillis() - stageStart
+                Log.d(TAG, "[Fetch] ${elapsed}ms")
+
+                // 🕐 Decode
                 var bitmap = BitmapDecoder.decode(
                     bytes,
                     req.resizeWidth ?: 0,
                     req.resizeHeight ?: 0,
-                )
-
-                Log.d(TAG, "Decoded bitmap w=${bitmap.width} h=${bitmap.height} for $key")
-
-                // Transform: CPU bound Dispatchers.Default
-                if (req.transformations.isNotEmpty()) {
-                    bitmap = withContext(Dispatchers.Default) {
-                        req.transformations.fold(bitmap) { bmp, transform ->
-                            transform.transform(
-                                bitmapPool,
-                                bmp,
-                                req.outWidth ?: req.resizeWidth ?: bmp.width,
-                                req.outHeight ?: req.resizeHeight ?: bmp.height
-                            )
-                        }
-                    }
-                    Log.d(TAG, "Applied ${req.transformations.size} transforms for $key")
+                ).also {
+                    Log.d(
+                        TAG,
+                        "[Decode] ${(System.currentTimeMillis() - stageStart)}ms (since fetch)"
+                    )
                 }
 
-                // Wrap Resource
+                // 🕐 Transform
+                if (req.transformations.isNotEmpty()) {
+                    val t = measureTimeMillis {
+                        bitmap = withContext(Dispatchers.Default) {
+                            req.transformations.fold(bitmap) { bmp, transform ->
+                                transform.transform(
+                                    bitmapPool,
+                                    bmp,
+                                    req.outWidth ?: req.resizeWidth ?: bmp.width,
+                                    req.outHeight ?: req.resizeHeight ?: bmp.height
+                                )
+                            }
+                        }
+                    }
+                    Log.d(TAG, "[Transform] $t ms (${req.transformations.size} transforms)")
+                }
+
+                // 🕐 Cache
+                val cacheTime = measureTimeMillis {
+                    if (req.useDiskCache) diskCache.put(key, bitmap)
+                    memoryCache.put(key, bitmap)
+                }
+                Log.d(TAG, "[Cache write] $cacheTime ms")
+
+                // 🕐 Wrap & Deliver
                 val res = EngineResource(key, bitmap, activeResources)
                 activeResources.put(key, res)
 
-                // Cache
-                if (req.useDiskCache) {
-                    diskCache.put(key, bitmap)
-                }
-
-                // Deliver: UI bound
                 withContext(Dispatchers.Main) {
-                    Log.d(TAG, "Deliver to target: $key")
                     target.onResourceReady(res)
+                    logDuration("Network + Decode + Transform")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Load failed: $key", e)
-                withContext(Dispatchers.Main) { target.onLoadFailed() }
+                when (e) {
+                    is CancellationException -> {
+                        Log.d(TAG, "Cancelled loading: $key")
+                    }
+
+                    else -> {
+                        Log.e(TAG, "Load failed: $key", e)
+                        withContext(Dispatchers.Main) { target.onLoadFailed() }
+                    }
+                }
             }
         }
     }
@@ -124,13 +150,10 @@ class Engine(
     private fun buildKey(req: Request): String {
         val rawKey = buildString {
             append(req.url)
-
             if (req.resizeWidth != null && req.resizeHeight != null)
                 append("#resize=${req.resizeWidth}x${req.resizeHeight}")
-
             if (req.outWidth != null && req.outHeight != null)
                 append("#out=${req.outWidth}x${req.outHeight}")
-
             if (req.transformations.isNotEmpty()) {
                 append("#transforms=")
                 req.transformations.forEach {
@@ -138,7 +161,6 @@ class Engine(
                     append(";")
                 }
             }
-
             append("#useMemory=${req.useMemoryCache}")
             append("#useDisk=${req.useDiskCache}")
         }

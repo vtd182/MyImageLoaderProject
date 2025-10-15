@@ -109,7 +109,9 @@ class HomeActivity : AppCompatActivity() {
                 super.onScrollStateChanged(rv, newState)
                 when (newState) {
                     RecyclerView.SCROLL_STATE_SETTLING -> {
-                        RequestManager.pauseAll()
+                        if (lastDy > 0) {
+                            RequestManager.pauseAll()
+                        }
                     }
 
                     RecyclerView.SCROLL_STATE_IDLE -> {

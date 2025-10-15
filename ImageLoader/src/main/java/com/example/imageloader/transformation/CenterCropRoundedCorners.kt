@@ -11,7 +11,7 @@ import android.graphics.RectF
 import com.example.imageloader.core.abstract.BitmapPool
 import kotlin.math.max
 
-class CenterCropRoundedCorners(private val radius: Float) :
+class CenterCropRoundedCorners(val radius: Float) :
     BaseTransformation("CenterCropRoundedCorners($radius)") {
 
     override fun transform(

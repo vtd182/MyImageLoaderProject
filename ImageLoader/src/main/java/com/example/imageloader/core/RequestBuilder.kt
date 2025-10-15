@@ -1,10 +1,15 @@
 package com.example.imageloader.core
 
+import android.content.res.Resources
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.widget.ImageView
-import androidx.core.graphics.drawable.toDrawable
+import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.core.graphics.toColorInt
 import com.example.imageloader.target.ImageViewTarget
 import com.example.imageloader.target.Target
+import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.imageloader.transformation.Transformation
 
 class RequestBuilder(
@@ -63,11 +68,7 @@ class RequestBuilder(
             imageView.layoutParams = params
         }
 
-        when {
-            placeholderRes != null -> imageView.setImageResource(placeholderRes!!)
-            placeholderColor != null -> imageView.setImageDrawable(placeholderColor!!.toDrawable())
-            else -> imageView.setImageDrawable(null)
-        }
+        applyPlaceholder(imageView)
         val reload = { into(imageView) }
 
         val job = if (!RequestManager.isPaused()) {
@@ -107,4 +108,39 @@ class RequestBuilder(
         outWidth = width; outHeight = height; return this
     }
 
+    fun applyPlaceholder(imageView: ImageView) {
+        when {
+            placeholderRes != null -> {
+                val drawable = AppCompatResources.getDrawable(imageView.context, placeholderRes!!)
+                imageView.setImageDrawable(drawable?.let { roundDrawableIfNeeded(it) })
+            }
+
+            placeholderColor != null -> {
+                val radius = transformations.filterIsInstance<CenterCropRoundedCorners>()
+                    .firstOrNull()?.radius ?: 0f
+
+                val shape = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = radius
+                    setColor(placeholderColor!!)
+                }
+                imageView.setImageDrawable(shape)
+            }
+
+            else -> imageView.setImageDrawable(null)
+        }
+    }
+
+    private fun roundDrawableIfNeeded(drawable: Drawable): Drawable {
+        val rounded = transformations
+            .filterIsInstance<CenterCropRoundedCorners>()
+            .firstOrNull()
+
+        if (rounded != null && drawable is BitmapDrawable) {
+            val bitmap = drawable.bitmap
+            val roundedDrawable = RoundedBitmapDrawableFactory.create(Resources.getSystem(), bitmap)
+            roundedDrawable.cornerRadius = rounded.radius
+            return roundedDrawable
+        }
+        return drawable
+    }
 }
