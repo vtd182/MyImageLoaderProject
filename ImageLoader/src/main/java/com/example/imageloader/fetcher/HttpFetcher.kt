@@ -4,12 +4,12 @@ import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
-import java.net.URL
 
 class HttpFetcher(
     private val maxRetries: Int = 5,
     private val retryDelayMillis: Long = 1000,
-    private val onRetry: ((attempt: Int, maxRetries: Int, error: Exception) -> Unit)? = null
+    private val onRetry: ((attempt: Int, maxRetries: Int, error: Exception) -> Unit)? = null,
+    private val connectionFactory: ConnectionFactory = DefaultConnectionFactory
 ) : DataFetcher {
 
     override suspend fun fetch(url: String): ByteArray {
@@ -18,7 +18,7 @@ class HttpFetcher(
 
         while (attempt < maxRetries) {
             try {
-                val connection = URL(url).openConnection() as HttpURLConnection
+                val connection = connectionFactory.open(url)
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
                 connection.requestMethod = "GET"

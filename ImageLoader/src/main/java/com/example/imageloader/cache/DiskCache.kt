@@ -9,7 +9,8 @@ import java.io.FileOutputStream
 
 class DiskCache(
     context: Context,
-    private val maxSizeBytes: Long = 150L * 1000 * 1000 // 150MB
+    private val maxSizeBytes: Long = 150L * 1000 * 1000, // 150MB
+    private val logger: Logger = AndroidLogger
 ) {
     private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
 
@@ -27,7 +28,7 @@ class DiskCache(
         val estimatedSize = bitmap.byteCount.toLong()
         val total = cacheDir.listFiles()?.sumOf { it.length() } ?: 0
         if (total + estimatedSize > maxSizeBytes) {
-            Log.wtf(
+            logger.wtf(
                 "DiskCache",
                 "Trim with total: $total, estimatedSize: $estimatedSize, maxSizeBytes: $maxSizeBytes"
             )
@@ -39,7 +40,7 @@ class DiskCache(
             FileOutputStream(tempFile).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
-            Log.wtf("DiskCache", "total affter: $total ")
+            logger.wtf("DiskCache", "total after: $total ")
             tempFile.renameTo(file)
         } catch (e: Exception) {
             tempFile.delete()
@@ -52,8 +53,8 @@ class DiskCache(
         cacheDir.listFiles()?.forEach { it.delete() }
     }
 
-    private fun trimCache(requiredFree: Long) {
-        Log.wtf("DiskCache", "trimCache: $requiredFree")
+    fun trimCache(requiredFree: Long) {
+        logger.wtf("DiskCache", "trimCache: $requiredFree")
         var freed = 0L
         cacheDir.listFiles()
             ?.sortedBy { it.lastModified() }
@@ -62,5 +63,15 @@ class DiskCache(
                 val size = it.length()
                 if (it.delete()) freed += size
             }
+    }
+
+    interface Logger {
+        fun wtf(tag: String, msg: String)
+    }
+
+    object AndroidLogger : Logger {
+        override fun wtf(tag: String, msg: String) {
+            Log.wtf(tag, msg)
+        }
     }
 }
