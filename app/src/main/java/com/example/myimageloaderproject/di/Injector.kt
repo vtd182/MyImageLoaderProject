@@ -13,7 +13,7 @@ object Injector {
     private const val ACCESS_KEY = "WisKyjbbno1lYFrCkYyzZUhiffEkjFdEEAC-kQvMs3I"
     private const val ACCESS_KEY_V2 = "jJgrH_pPfg_c-CROedmueKKsE_F7xvbUvXDoKZemxYs"
 
-    private val httpClient by lazy { HttpClient(BASE_URL, ACCESS_KEY) }
+    private val httpClient by lazy { HttpClient(BASE_URL, ACCESS_KEY_V2) }
 
     private val unsplashApi: UnsplashApi by lazy { UnsplashApiImpl(httpClient) }
 

@@ -43,7 +43,7 @@ class PhotoAdapter(
             val spacing = (8 * itemView.resources.displayMetrics.density).toInt()
             val itemWidth = (screenWidth / spanCount) - spacing
 
-            val ratio = photo.height.toFloat() / photo.width.toFloat()
+            val ratio = 1
             val itemHeight = (itemWidth * ratio).toInt()
 
             photo.urls.small?.let {

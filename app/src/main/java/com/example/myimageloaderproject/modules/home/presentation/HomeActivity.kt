@@ -14,8 +14,8 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.example.imageloader.core.RequestManager
 import com.example.myimageloaderproject.R
@@ -38,7 +38,7 @@ class HomeActivity : AppCompatActivity() {
 
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     private var spanCount = 2
-    private lateinit var layoutManager: StaggeredGridLayoutManager
+    private lateinit var layoutManager: GridLayoutManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,7 +55,7 @@ class HomeActivity : AppCompatActivity() {
 
         adapter = PhotoAdapter { spanCount }
 
-        layoutManager = StaggeredGridLayoutManager(spanCount, StaggeredGridLayoutManager.VERTICAL)
+        layoutManager = GridLayoutManager(this, spanCount)
         recyclerView.layoutManager = layoutManager
         recyclerView.adapter = adapter
 
@@ -84,7 +84,12 @@ class HomeActivity : AppCompatActivity() {
 
         btnRetry.setOnClickListener { viewModel.loadPhotos() }
         btnToggleCorner.setOnClickListener {
-            Toast.makeText(this, "Toggle corner function (TODO)", Toast.LENGTH_SHORT).show()
+            val enabled = !adapterCornerEnabled
+            adapter.setCornerEnabled(enabled)
+            adapter.notifyItemRangeChanged(0, adapter.itemCount)
+            adapterCornerEnabled = enabled
+            val msg = if (enabled) "Đã bật bo góc ảnh" else "Đã tắt bo góc ảnh"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
 
         swipeRefresh.setOnRefreshListener {
@@ -95,11 +100,9 @@ class HomeActivity : AppCompatActivity() {
         viewModel.loadPhotos()
 
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            private var lastDy = 0
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(rv, dx, dy)
-                lastDy = dy
-                val lastVisible = layoutManager.findLastVisibleItemPositions(null).maxOrNull() ?: 0
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
                 if (lastVisible >= adapter.itemCount - 3) {
                     viewModel.loadMorePhotos()
                 }
@@ -113,7 +116,7 @@ class HomeActivity : AppCompatActivity() {
                     }
 
                     RecyclerView.SCROLL_STATE_IDLE -> {
-                        // load visible
+                        // Resume chỉ ảnh đang hiển thị
                         val visibleViews = mutableListOf<ImageView>()
                         for (i in 0 until rv.childCount) {
                             val child = rv.getChildAt(i)
@@ -124,24 +127,9 @@ class HomeActivity : AppCompatActivity() {
                         }
                         RequestManager.resumeVisibleOnly(visibleViews)
                     }
-
-                    // load full
-//                    RecyclerView.SCROLL_STATE_IDLE -> {
-//                        RequestManager.resumeAll()
-//                    }
                 }
             }
         })
-
-        btnToggleCorner.setOnClickListener {
-            val enabled = !adapterCornerEnabled
-            adapter.setCornerEnabled(enabled)
-            adapter.notifyItemRangeChanged(0, adapter.itemCount)
-            val msg = if (enabled) "Đã bật bo góc ảnh" else "Đã tắt bo góc ảnh"
-            adapterCornerEnabled = enabled
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-        }
-
 
         addFpsOverlay()
     }
@@ -180,7 +168,6 @@ class HomeActivity : AppCompatActivity() {
 
     private fun updateSpanCount() {
         layoutManager.spanCount = spanCount
-        layoutManager.invalidateSpanAssignments()
         adapter.notifyItemRangeChanged(0, adapter.itemCount)
     }
 
