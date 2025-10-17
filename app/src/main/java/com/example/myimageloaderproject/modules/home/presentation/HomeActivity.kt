@@ -90,7 +90,10 @@ class HomeActivity : AppCompatActivity() {
 
             val enabled = !adapterCornerEnabled
             adapter.setCornerEnabled(enabled)
-            adapter.notifyItemRangeChanged(0, adapter.itemCount)
+
+            // Notify all items to ensure proper reload and avoid duplicates
+            adapter.notifyDataSetChanged()
+
             adapterCornerEnabled = enabled
             val msg = if (enabled) "Đã bật bo góc ảnh" else "Đã tắt bo góc ảnh"
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()

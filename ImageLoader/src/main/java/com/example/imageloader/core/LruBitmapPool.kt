@@ -1,50 +1,55 @@
 package com.example.imageloader.core
 
 import android.graphics.Bitmap
-import android.graphics.Bitmap.Config
+import android.util.Log
 import com.example.imageloader.core.abstract.BitmapPool
-import java.util.ArrayDeque
 
 class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
 
-    private data class Key(val width: Int, val height: Int, val config: Config)
+    private data class Key(val width: Int, val height: Int, val config: Bitmap.Config)
 
-    private val buckets = LinkedHashMap<Key, ArrayDeque<Bitmap>>(16, 0.75f, true)
+    private val map = LinkedHashMap<Key, MutableList<Bitmap>>(0, 0.75f, true)
     private var currentSize = 0L
 
-    @Synchronized
-    override fun get(width: Int, height: Int, config: Config): Bitmap? {
-        val exactKey = Key(width, height, config)
-        val exactDeque = buckets[exactKey]
+    // Debug counters
+    private var hits = 0
+    private var misses = 0
+    private var puts = 0
+    private var evictions = 0
 
-        exactDeque?.pollFirst()?.let { bmp ->
-            if (isReusable(bmp)) {
-                currentSize -= bmp.allocationByteCount
-                return bmp
-            }
+    @Synchronized
+    override fun get(width: Int, height: Int, config: Bitmap.Config): Bitmap? {
+        val key = Key(width, height, config)
+        val candidates = map[key]
+
+        val bitmap = candidates?.firstOrNull { isReusable(it) }?.also {
+            candidates.remove(it)
+            if (candidates.isEmpty()) map.remove(key)
+            currentSize -= it.safeByteCount()
+            hits++
         }
 
-        val iter = buckets.entries.iterator()
-        while (iter.hasNext()) {
-            val (key, deque) = iter.next()
-            if (key.config == config && key.width >= width && key.height >= height) {
-                val candidate = deque.pollFirst()
-                if (candidate != null && isReusable(candidate)) {
-                    currentSize -= candidate.allocationByteCount
+        if (bitmap != null) {
+            bitmap.eraseColor(0)
+            return bitmap
+        }
 
-                    if (candidate.width != width || candidate.height != height) {
-                        try {
-                            candidate.reconfigure(width, height, config)
-                        } catch (e: Exception) {
-                            candidate.recycle()
-                            continue
-                        }
-                    }
+        // fallback: tìm bitmap lớn hơn hoặc cùng config
+        for ((k, list) in map.entries) {
+            if (k.config == config && k.width >= width && k.height >= height) {
+                val candidate = list.firstOrNull { isReusable(it) }
+                if (candidate != null) {
+                    list.remove(candidate)
+                    if (list.isEmpty()) map.remove(k)
+                    currentSize -= candidate.safeByteCount()
+                    candidate.eraseColor(0)
+                    hits++
                     return candidate
                 }
             }
         }
 
+        misses++
         return null
     }
 
@@ -52,22 +57,34 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
     override fun put(bitmap: Bitmap) {
         if (!isReusable(bitmap)) return
         val size = bitmap.safeByteCount()
-        if (size > maxSizeBytes / 2) return
+        if (size <= 0 || size > maxSizeBytes / 2) return
 
-        val key = Key(bitmap.width, bitmap.height, bitmap.config ?: Config.ARGB_8888)
-        val deque = buckets.getOrPut(key) { ArrayDeque() }
-        deque.addFirst(bitmap)
+        val key = Key(bitmap.width, bitmap.height, bitmap.config ?: Bitmap.Config.ARGB_8888)
+        val list = map.getOrPut(key) { mutableListOf() }
+        list.add(bitmap)
         currentSize += size
+        puts++
+
         trimToSize(maxSizeBytes)
     }
 
     @Synchronized
     override fun clear() {
-        for ((_, deque) in buckets) {
-            deque.forEach { if (!it.isRecycled) it.recycle() }
+        for (list in map.values) {
+            list.forEach { if (!it.isRecycled) it.recycle() }
         }
-        buckets.clear()
+        map.clear()
         currentSize = 0L
+        Log.d("BitmapPool", "Pool cleared")
+    }
+
+    @Synchronized
+    fun trimMemory(level: Int) {
+        // giống Glide: trim mạnh khi onTrimMemory(level >= TRIM_MEMORY_MODERATE)
+        when {
+            level >= 60 -> clear()
+            level >= 40 -> trimToSize(maxSizeBytes / 2)
+        }
     }
 
     override fun size(): Long = currentSize
@@ -78,23 +95,31 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
 
     private fun Bitmap.safeByteCount(): Int {
         return try {
-            allocationByteCount
+            if (isRecycled) 0 else allocationByteCount
         } catch (_: Throwable) {
-            byteCount
+            if (isRecycled) 0 else byteCount
         }
     }
 
     private fun trimToSize(maxSize: Long) {
-        val it = buckets.entries.iterator()
-        while (currentSize > maxSize && it.hasNext()) {
-            val entry = it.next()
-            val deque = entry.value
-            while (deque.isNotEmpty() && currentSize > maxSize) {
-                val b = deque.removeLast()
+        val iter = map.entries.iterator()
+        while (currentSize > maxSize && iter.hasNext()) {
+            val entry = iter.next()
+            val list = entry.value
+            while (list.isNotEmpty() && currentSize > maxSize) {
+                val b = list.removeAt(list.size - 1)
                 currentSize -= b.safeByteCount()
                 if (!b.isRecycled) b.recycle()
+                evictions++
             }
-            if (deque.isEmpty()) it.remove()
+            if (list.isEmpty()) iter.remove()
         }
+    }
+
+    fun dumpStats(tag: String = "BitmapPool") {
+        Log.d(
+            tag,
+            "hits=$hits, misses=$misses, puts=$puts, evictions=$evictions, size=$currentSize/$maxSizeBytes"
+        )
     }
 }
