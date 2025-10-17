@@ -2,7 +2,6 @@ package com.example.imageloader.transformation
 
 import android.graphics.Bitmap
 import android.util.Log
-import androidx.core.graphics.createBitmap
 import com.example.imageloader.core.abstract.BitmapPool
 
 
@@ -27,6 +26,10 @@ abstract class BaseTransformation(
             Log.d("BaseTransformation", "Creating new bitmap: ${width}x${height}, config=$config")
             createBitmap(width, height, config)
         }
+    }
+
+    protected fun createBitmap(width: Int, height: Int, config: Bitmap.Config): Bitmap {
+        return Bitmap.createBitmap(width, height, config)
     }
 
     override fun key(): String = id

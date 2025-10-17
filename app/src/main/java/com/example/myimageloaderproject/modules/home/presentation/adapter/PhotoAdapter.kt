@@ -1,5 +1,11 @@
 package com.example.myimageloaderproject.modules.home.presentation.adapter
 
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +20,14 @@ import com.example.imageloader.core.RequestManager
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.net.URL
 
 class PhotoAdapter(
     private val spanProvider: () -> Int
@@ -64,14 +78,106 @@ class PhotoAdapter(
             tvDescription.text = desc
 
             tvDescription.setOnLongClickListener {
-                Toast.makeText(
-                    it.context,
-                    "Download option for ${photo.id}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                showDownloadSheet(it, photo)
                 true
             }
         }
+
+        private fun showDownloadSheet(view: View, photo: UnsplashPhoto) {
+            val context = view.context
+            val dialog = BottomSheetDialog(context)
+            val sheetView = LayoutInflater.from(context)
+                .inflate(R.layout.bottom_sheet_download, null)
+            dialog.setContentView(sheetView)
+
+            val btnDownload = sheetView.findViewById<TextView>(R.id.btnDownload)
+            val btnCancel = sheetView.findViewById<TextView>(R.id.btnCancel)
+
+            btnDownload.setOnClickListener {
+                dialog.dismiss()
+                Toast.makeText(context, "Đang tải ảnh...", Toast.LENGTH_SHORT).show()
+                downloadImage(
+                    photo.urls.full ?: photo.urls.small ?: return@setOnClickListener,
+                    context
+                )
+            }
+
+            btnCancel.setOnClickListener { dialog.dismiss() }
+
+            dialog.show()
+        }
+
+        private fun downloadImage(url: String, context: Context) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val fileName = "photo_${System.currentTimeMillis()}.jpg"
+                    val input = URL(url).openStream()
+
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        val values = ContentValues().apply {
+                            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                            put(
+                                MediaStore.Images.Media.RELATIVE_PATH,
+                                Environment.DIRECTORY_DOWNLOADS
+                            )
+                            put(MediaStore.Images.Media.IS_PENDING, 1)
+                        }
+
+                        val resolver = context.contentResolver
+                        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+
+                        uri?.let {
+                            resolver.openOutputStream(it)?.use { output ->
+                                input.copyTo(output)
+                            }
+                            values.clear()
+                            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                            resolver.update(uri, values, null, null)
+                        }
+
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                context,
+                                "Ảnh đã lưu vào thư mục Downloads",
+                                Toast.LENGTH_LONG
+                            )
+                                .show()
+                        }
+                    } else {
+                        val downloadsDir =
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                        if (!downloadsDir.exists()) downloadsDir.mkdirs()
+
+                        val file = File(downloadsDir, fileName)
+                        FileOutputStream(file).use { output -> input.copyTo(output) }
+
+                        val uri = Uri.fromFile(file)
+                        context.sendBroadcast(
+                            Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, uri)
+                        )
+
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                context,
+                                "Ảnh đã lưu vào: ${file.absolutePath}",
+                                Toast.LENGTH_LONG
+                            )
+                                .show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            "Tải ảnh thất bại: ${e.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+        }
+
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoViewHolder {
