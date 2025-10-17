@@ -67,7 +67,6 @@ class Engine(
         // 3️⃣ Disk Cache
         diskCache.get(key)?.let { bitmap ->
             logDuration("DiskCache")
-            memoryCache.put(key, bitmap)
             val res = EngineResource(key, bitmap, activeResources)
             activeResources.put(key, res)
             target.onResourceReady(res)
