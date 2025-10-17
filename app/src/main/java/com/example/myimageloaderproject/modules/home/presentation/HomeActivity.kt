@@ -84,6 +84,10 @@ class HomeActivity : AppCompatActivity() {
 
         btnRetry.setOnClickListener { viewModel.loadPhotos() }
         btnToggleCorner.setOnClickListener {
+            // Debounce: disable button to prevent rapid clicks
+            btnToggleCorner.isEnabled = false
+            btnToggleCorner.postDelayed({ btnToggleCorner.isEnabled = true }, 500)
+
             val enabled = !adapterCornerEnabled
             adapter.setCornerEnabled(enabled)
             adapter.notifyItemRangeChanged(0, adapter.itemCount)

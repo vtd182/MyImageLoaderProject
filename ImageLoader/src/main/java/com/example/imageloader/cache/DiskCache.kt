@@ -1,11 +1,10 @@
 package com.example.imageloader.cache
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 
 class DiskCache(
     context: Context,
@@ -14,23 +13,35 @@ class DiskCache(
 ) {
     private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
 
+    /**
+     * Đọc file từ cache, trả về raw bytes nếu có.
+     */
     @Synchronized
-    fun get(key: String): Bitmap? {
+    fun get(key: String): ByteArray? {
         val file = File(cacheDir, key)
-        return if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
+        return try {
+            if (!file.exists()) return null
+            file.readBytes()
+        } catch (e: Exception) {
+            logger.wtf("DiskCache", "get() failed: ${e.message}")
+            null
+        }
     }
 
+    /**
+     * Lưu raw bytes xuống cache.
+     */
     @Synchronized
-    fun put(key: String, bitmap: Bitmap): Boolean {
+    fun put(key: String, data: ByteArray): Boolean {
         val file = File(cacheDir, key)
         if (file.exists()) return true
 
-        val estimatedSize = bitmap.byteCount.toLong()
+        val estimatedSize = data.size.toLong()
         val total = cacheDir.listFiles()?.sumOf { it.length() } ?: 0
         if (total + estimatedSize > maxSizeBytes) {
             logger.wtf(
                 "DiskCache",
-                "Trim with total: $total, estimatedSize: $estimatedSize, maxSizeBytes: $maxSizeBytes"
+                "Trim cache: total=$total, estimated=$estimatedSize, max=$maxSizeBytes"
             )
             trimCache((total + estimatedSize) - maxSizeBytes)
         }
@@ -38,11 +49,12 @@ class DiskCache(
         val tempFile = File(cacheDir, "${file.name}.tmp")
         return try {
             FileOutputStream(tempFile).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                out.write(data)
+                out.flush()
             }
-            logger.wtf("DiskCache", "total after: $total ")
             tempFile.renameTo(file)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
+            logger.wtf("DiskCache", "put() failed: ${e.message}")
             tempFile.delete()
             false
         }
@@ -53,7 +65,10 @@ class DiskCache(
         cacheDir.listFiles()?.forEach { it.delete() }
     }
 
-    fun trimCache(requiredFree: Long) {
+    /**
+     * Xóa file cũ nhất cho đến khi giải phóng đủ requiredFree bytes.
+     */
+    private fun trimCache(requiredFree: Long) {
         logger.wtf("DiskCache", "trimCache: $requiredFree")
         var freed = 0L
         cacheDir.listFiles()
