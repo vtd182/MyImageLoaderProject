@@ -119,7 +119,10 @@ class Engine(
 
                 // 🕐 Fetch
                 stageStart = System.currentTimeMillis()
-                val bytes = fetcher.fetch(req.url)
+                val result = fetcher.fetch(req.url)
+                val bytes = result.bytes
+                val contentType = result.contentType
+                Log.d(TAG, "[Fetch] ${System.currentTimeMillis() - stageStart}ms")
                 elapsed = System.currentTimeMillis() - stageStart
                 Log.d(TAG, "[Fetch] ${elapsed}ms")
 
@@ -154,7 +157,7 @@ class Engine(
 
                 // 🕐 Cache
                 val cacheTime = measureTimeMillis {
-                    if (req.useDiskCache) diskCache.put(key, bytes) // raw bytes gốc
+                    if (req.useDiskCache) diskCache.put(key, bytes, contentType)
                     memoryCache.put(key, bitmap)
                 }
                 Log.d(TAG, "[Cache write] $cacheTime ms")
@@ -187,13 +190,13 @@ class Engine(
                 append("#resize=${req.resizeWidth}x${req.resizeHeight}")
             if (req.outWidth != null && req.outHeight != null)
                 append("#out=${req.outWidth}x${req.outHeight}")
-            if (req.transformations.isNotEmpty()) {
-                append("#transforms=")
-                req.transformations.forEach {
-                    append(it.key())
-                    append(";")
-                }
-            }
+//            if (req.transformations.isNotEmpty()) {
+//                append("#transforms=")
+//                req.transformations.forEach {
+//                    append(it.key())
+//                    append(";")
+//                }
+//            }
             append("#useMemory=${req.useMemoryCache}")
             append("#useDisk=${req.useDiskCache}")
         }

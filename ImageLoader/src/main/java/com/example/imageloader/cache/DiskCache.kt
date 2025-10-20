@@ -15,12 +15,13 @@ class DiskCache(
 
     /**
      * Đọc file từ cache, trả về raw bytes nếu có.
+     * Tự động thử cả các đuôi mở rộng phổ biến.
      */
     @Synchronized
     fun get(key: String): ByteArray? {
-        val file = File(cacheDir, key)
+        // Tìm file có key tương ứng (có hoặc không đuôi)
+        val file = findFile(key) ?: return null
         return try {
-            if (!file.exists()) return null
             file.readBytes()
         } catch (e: Exception) {
             logger.wtf("DiskCache", "get() failed: ${e.message}")
@@ -29,11 +30,19 @@ class DiskCache(
     }
 
     /**
-     * Lưu raw bytes xuống cache.
+     * Lưu raw bytes xuống cache, có thêm phần mở rộng dựa vào contentType.
      */
     @Synchronized
-    fun put(key: String, data: ByteArray): Boolean {
-        val file = File(cacheDir, key)
+    fun put(key: String, data: ByteArray, contentType: String? = null): Boolean {
+        val extension = when (contentType?.lowercase()) {
+            "image/jpeg", "image/jpg" -> ".jpg"
+            "image/png" -> ".png"
+            "image/webp" -> ".webp"
+            "image/avif" -> ".avif"
+            else -> ".dat"
+        }
+
+        val file = File(cacheDir, "$key$extension")
         if (file.exists()) return true
 
         val estimatedSize = data.size.toLong()
@@ -78,6 +87,16 @@ class DiskCache(
                 val size = it.length()
                 if (it.delete()) freed += size
             }
+    }
+
+    /**
+     * Tìm file cache theo key (có thể có .jpg/.png/.webp hoặc không).
+     */
+    private fun findFile(key: String): File? {
+        val possible = listOf(".jpg", ".png", ".webp", ".avif", ".dat", "")
+        return possible
+            .map { File(cacheDir, "$key$it") }
+            .firstOrNull { it.exists() }
     }
 
     interface Logger {

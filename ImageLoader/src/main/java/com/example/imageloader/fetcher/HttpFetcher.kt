@@ -12,7 +12,7 @@ class HttpFetcher(
     private val connectionFactory: ConnectionFactory = DefaultConnectionFactory
 ) : DataFetcher {
 
-    override suspend fun fetch(url: String): ByteArray {
+    override suspend fun fetch(url: String): HttpResult {
         var attempt = 0
         var lastError: Exception? = null
 
@@ -29,6 +29,7 @@ class HttpFetcher(
                     throw Exception("HTTP ${connection.responseCode}")
                 }
 
+                val contentType = connection.contentType
                 val inputStream: InputStream = connection.inputStream
                 val outputStream = ByteArrayOutputStream()
                 val buffer = ByteArray(4096)
@@ -36,10 +37,11 @@ class HttpFetcher(
                 while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                     outputStream.write(buffer, 0, bytesRead)
                 }
+
                 inputStream.close()
                 connection.disconnect()
 
-                return outputStream.toByteArray()
+                return HttpResult(outputStream.toByteArray(), contentType)
             } catch (e: Exception) {
                 Log.e("HttpFetcher", "Error fetching $url: ${e.message}")
                 lastError = e

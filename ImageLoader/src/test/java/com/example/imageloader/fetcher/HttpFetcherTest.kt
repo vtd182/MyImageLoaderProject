@@ -1,82 +1,78 @@
 package com.example.imageloader.fetcher
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertThrows
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
-import org.mockito.Mockito.anyString
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.verify
-import org.mockito.Mockito.`when`
+import org.mockito.Mock
+import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.whenever
 import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class HttpFetcherTest {
 
-    private lateinit var connectionFactory: ConnectionFactory
-    private lateinit var connection: HttpURLConnection
-    private lateinit var fetcher: HttpFetcher
+    @Mock
+    private lateinit var mockConnection: HttpURLConnection
+
+    @Mock
+    private lateinit var mockConnectionFactory: ConnectionFactory
+
+    private lateinit var httpFetcher: HttpFetcher
 
     @Before
-    fun setup() {
-        connectionFactory = mock(ConnectionFactory::class.java)
-        connection = mock(HttpURLConnection::class.java)
-        fetcher = HttpFetcher(
-            maxRetries = 3,
-            retryDelayMillis = 1,
-            connectionFactory = connectionFactory
-        )
+    fun setUp() {
+        MockitoAnnotations.openMocks(this)
     }
 
     @Test
-    fun `fetch should return data when HTTP OK`() = runTest {
-        // Arrange
-        val expectedData = "hello".toByteArray()
-        `when`(connectionFactory.open(anyString())).thenReturn(connection)
-        `when`(connection.responseCode).thenReturn(HttpURLConnection.HTTP_OK)
-        `when`(connection.inputStream).thenReturn(ByteArrayInputStream(expectedData))
+    fun `fetch should return HttpResult on successful response`() = runTest {
+        // Given
+        val url = "https://example.com/image.jpg"
+        val expectedBytes = byteArrayOf(1, 2, 3, 4, 5)
+        val contentType = "image/jpeg"
+        val inputStream = ByteArrayInputStream(expectedBytes)
 
-        // Act
-        val result = fetcher.fetch("https://example.com")
+        whenever(mockConnectionFactory.open(url)).thenReturn(mockConnection)
+        whenever(mockConnection.responseCode).thenReturn(HttpURLConnection.HTTP_OK)
+        whenever(mockConnection.contentType).thenReturn(contentType)
+        whenever(mockConnection.inputStream).thenReturn(inputStream)
 
-        // Assert
-        assertArrayEquals(expectedData, result)
-        verify(connection).connect()
-        verify(connection).disconnect()
+        httpFetcher = HttpFetcher(connectionFactory = mockConnectionFactory)
+
+        val result = httpFetcher.fetch(url)
+
+        assertEquals(expectedBytes.contentToString(), result.bytes.contentToString())
+        assertEquals(contentType, result.contentType)
     }
 
-//    @Test
-//    fun `fetch should retry when connection fails`() = runTest {
-//        // Arrange
-//        whenever(connectionFactory.open(anyString()))
-//            .thenAnswer { throw RuntimeException("Network error") }
-//
-//        // Act + Assert
-//        assertThrows(RuntimeException::class.java) {
-//            runTest {
-//                fetcher.fetch("https://fail.com")
-//            }
-//        }
-//
-//        // Verify: 5 attempts total
-//        verify(connectionFactory, times(1)).open(anyString())
-//    }
+    @Test(expected = Exception::class)
+    fun `fetch should throw exception on non-OK response code`() = runTest {
+        // Given
+        val url = "https://example.com/image.jpg"
 
+        whenever(mockConnectionFactory.open(url)).thenReturn(mockConnection)
+        whenever(mockConnection.responseCode).thenReturn(HttpURLConnection.HTTP_NOT_FOUND)
 
-    @Test
-    fun `fetch should throw when response is not OK`() = runTest {
-        // Arrange
-        `when`(connectionFactory.open(anyString())).thenReturn(connection)
-        `when`(connection.responseCode).thenReturn(500)
+        httpFetcher = HttpFetcher(maxRetries = 1, connectionFactory = mockConnectionFactory)
 
-        // Act + Assert
-        assertThrows(Exception::class.java) {
-            runTest {
-                fetcher.fetch("https://bad.com")
-            }
-        }
+        httpFetcher.fetch(url)
+
+    }
+
+    @Test(expected = Exception::class)
+    fun `fetch should throw exception after max retries on failure`() = runTest {
+        // Given
+        val url = "https://example.com/image.jpg"
+        val maxRetries = 3
+
+        whenever(mockConnectionFactory.open(url)).thenReturn(mockConnection)
+        whenever(mockConnection.connect()).thenThrow(RuntimeException("Connection failed"))
+
+        httpFetcher =
+            HttpFetcher(maxRetries = maxRetries, connectionFactory = mockConnectionFactory)
+
+        httpFetcher.fetch(url)
+
     }
 }

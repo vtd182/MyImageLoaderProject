@@ -26,7 +26,7 @@ class HomeViewModel : ViewModel() {
     val uiState: StateFlow<HomeUiState> = _uiState
 
     private var currentPage = 1
-    private var perPage = 10
+    private var perPage = 25
     private var isLoading = false
 
     fun loadPhotos() {

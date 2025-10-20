@@ -138,6 +138,9 @@ class HomeActivity : AppCompatActivity() {
             }
         })
 
+        recyclerView.itemAnimator = null
+
+
         addFpsOverlay()
     }
 
