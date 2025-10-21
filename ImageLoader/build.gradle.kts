@@ -10,7 +10,6 @@ android {
 
     defaultConfig {
         minSdk = 24
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
@@ -24,20 +23,78 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     kotlinOptions {
         jvmTarget = "11"
     }
-    tasks.withType<Test>().configureEach {
-        useJUnit()
-        testLogging {
-            events("passed", "failed", "skipped")
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.useJUnit()
+            it.testLogging {
+                events("passed", "failed", "skipped")
+            }
         }
     }
 }
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+tasks.withType<Test>().configureEach {
+    extensions.configure<JacocoTaskExtension> {
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+
+    useJUnitPlatform()
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+
+    val coverageSourceDirs = listOf("src/main/java", "src/main/kotlin")
+
+    val classesDir = fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+        exclude(
+            "**/R.class",
+            "**/R$*.class",
+            "**/BuildConfig.*",
+            "**/Manifest*.*",
+            "**/*Test*.*",
+            // loại synthetic class
+            "**/*\$Companion*",
+            "**/*\$WhenMappings*"
+        )
+    }
+
+    sourceDirectories.setFrom(files(coverageSourceDirs))
+    classDirectories.setFrom(files(classesDir))
+    executionData.setFrom(
+        fileTree(layout.buildDirectory).include(
+            "**/jacoco/testDebugUnitTest.exec",
+            "**/outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"
+        )
+    )
+
+    doFirst {
+        println("Generating Jacoco coverage report...")
+    }
+}
+
 
 dependencies {
     implementation(libs.androidx.core.ktx)
@@ -61,21 +118,4 @@ jacoco {
     toolVersion = "0.8.12"
 }
 
-tasks.register<JacocoReport>("jacocoTestReport") {
-    dependsOn("testDebugUnitTest")
 
-    reports {
-        xml.required.set(true)
-        html.required.set(true)
-        csv.required.set(false)
-    }
-
-    val coverageSourceDirs = listOf("src/main/java", "src/main/kotlin")
-    val classesDir = fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
-        exclude("**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*")
-    }
-
-    sourceDirectories.setFrom(coverageSourceDirs)
-    classDirectories.setFrom(classesDir)
-    executionData.setFrom(fileTree(layout.buildDirectory).include("**/jacoco/testDebugUnitTest.exec"))
-}

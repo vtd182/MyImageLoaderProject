@@ -40,7 +40,7 @@ object BitmapDecoder {
         )
     }
 
-    private fun calculateInSampleSize(outW: Int, outH: Int, reqW: Int, reqH: Int): Int {
+    internal fun calculateInSampleSize(outW: Int, outH: Int, reqW: Int, reqH: Int): Int {
         if (reqW <= 0 || reqH <= 0) return 1
         var inSampleSize = 1
         if (outH > reqH || outW > reqW) {
@@ -53,7 +53,7 @@ object BitmapDecoder {
         return inSampleSize
     }
 
-    private fun calculateInSampleSizeForThumb(reqW: Int, reqH: Int): Int {
+    internal fun calculateInSampleSizeForThumb(reqW: Int, reqH: Int): Int {
         return 512 / reqW
     }
 }
