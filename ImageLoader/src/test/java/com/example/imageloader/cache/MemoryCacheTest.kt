@@ -29,14 +29,17 @@ class MemoryCacheTest {
 
         bitmap1 = mock(Bitmap::class.java)
         `when`(bitmap1.byteCount).thenReturn(100)
+        `when`(bitmap1.allocationByteCount).thenReturn(100)
         `when`(bitmap1.isMutable).thenReturn(true)
 
         bitmap2 = mock(Bitmap::class.java)
         `when`(bitmap2.byteCount).thenReturn(100)
+        `when`(bitmap2.allocationByteCount).thenReturn(100)
         `when`(bitmap2.isMutable).thenReturn(true)
 
         bitmap3 = mock(Bitmap::class.java)
         `when`(bitmap3.byteCount).thenReturn(100)
+        `when`(bitmap3.allocationByteCount).thenReturn(100)
         `when`(bitmap3.isMutable).thenReturn(true)
 
         // Giới hạn maxBytes = 200 -> khi thêm 3 bitmap sẽ evict 1 cái
@@ -65,6 +68,7 @@ class MemoryCacheTest {
     fun `should not put immutable bitmap into pool`() {
         val immutableBitmap = mock(Bitmap::class.java)
         `when`(immutableBitmap.byteCount).thenReturn(100)
+        `when`(immutableBitmap.allocationByteCount).thenReturn(100)
         `when`(immutableBitmap.isMutable).thenReturn(false)
 
         val smallCache = MemoryCache(maxBytes = 100, bitmapPool = bitmapPool)

@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    id("jacoco")
 }
 
 android {
@@ -48,4 +49,27 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("org.robolectric:robolectric:4.12.2")
     testImplementation(kotlin("test"))
+}
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+
+    val coverageSourceDirs = listOf("src/main/java", "src/main/kotlin")
+    val classesDir = fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+        exclude("**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*")
+    }
+
+    sourceDirectories.setFrom(coverageSourceDirs)
+    classDirectories.setFrom(classesDir)
+    executionData.setFrom(fileTree(layout.buildDirectory).include("**/jacoco/testDebugUnitTest.exec"))
 }

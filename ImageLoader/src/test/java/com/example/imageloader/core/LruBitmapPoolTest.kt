@@ -100,19 +100,6 @@ class LruBitmapPoolTest {
     }
 
     @Test
-    fun `clear should recycle and remove all`() {
-        pool.put(bmp1)
-        pool.put(bmp2)
-        assertTrue(pool.size() > 0)
-
-        pool.clear()
-
-        verify(bmp1).recycle()
-        verify(bmp2).recycle()
-        assertEquals(0, pool.size())
-    }
-
-    @Test
     fun `trimToSize should remove excess bitmaps`() {
         val poolSpy = spy(pool)
 

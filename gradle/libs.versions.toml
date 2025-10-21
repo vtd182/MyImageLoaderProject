@@ -19,6 +19,7 @@ serialization = "2.0.0"
 activity = "1.9.2"
 paletteKtx = "1.0.0"
 swiperefreshlayout = "1.1.0"
+jacoco = "0.8.12"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -52,4 +53,5 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 android-library = { id = "com.android.library", version.ref = "agp" }
+jacoco = { id = "jacoco", version.ref = "jacoco" }
 

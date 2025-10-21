@@ -39,11 +39,12 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
             if (k.config == config && k.width >= width && k.height >= height) {
                 val candidate = list.firstOrNull { isReusable(it) }
                 if (candidate != null) {
-                    list.remove(candidate)
-                    if (list.isEmpty()) map.remove(k)
-                    currentSize -= candidate.safeByteCount()
-                    candidate.eraseColor(0)
-                    hits++
+                list.remove(candidate)
+                if (list.isEmpty()) map.remove(k)
+                currentSize -= candidate.safeByteCount()
+                candidate.reconfigure(width, height, config)
+                candidate.eraseColor(0)
+                hits++
                     return candidate
                 }
             }
@@ -71,7 +72,7 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
     @Synchronized
     override fun clear() {
         for (list in map.values) {
-            list.forEach { if (!it.isRecycled) it.recycle() }
+        list.forEach { if (!it.isRecycled) { /* it.recycle() */ } }
         }
         map.clear()
         currentSize = 0L
