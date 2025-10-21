@@ -1,32 +1,46 @@
 package com.example.imageloader.decode
 
+import android.graphics.Bitmap
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.io.ByteArrayOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 class BitmapDecoderTest {
 
-    // Helper to create a simple byte array (fake, may not decode)
-    private fun createFakeImageBytes(): ByteArray =
-        byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
-
-    @Test(expected = RuntimeException::class)
-    fun `decode should throw exception for invalid bytes`() {
-        val bytes = createFakeImageBytes()
-        val reqW = 100
-        val reqH = 100
-
-        BitmapDecoder.decode(bytes, reqW, reqH)
+    private fun createValidPngBytes(): ByteArray {
+        val bmp = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(0xFF00FF00.toInt()) // tô xanh
+        val stream = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        return stream.toByteArray()
     }
 
     @Test
-    fun `extractDominantColor should return default when decode fails`() {
-        val bytes = byteArrayOf() // Invalid
+    fun `decode should successfully decode valid bytes`() {
+        val bytes = createValidPngBytes()
+        val reqW = 1
+        val reqH = 1
 
-        val result = BitmapDecoder.extractDominantColor(bytes)
-        assertEquals(0xFFCCCCCC.toInt(), result)
+        val bmp = BitmapDecoder.decode(bytes, reqW, reqH)
+        assertEquals(Bitmap.Config.ARGB_8888, bmp.config)
+        assertEquals(true, bmp.width > 0)
+        bmp.recycle()
+    }
+
+    @Test
+    fun `extractDominantColor should return gray when bytes cannot decode`() {
+        val color = BitmapDecoder.extractDominantColor(byteArrayOf()) // invalid
+        assertEquals(0xFFCCCCCC.toInt(), color)
+    }
+
+    @Test(expected = RuntimeException::class)
+    fun `decode should throw exception for invalid bytes`() {
+        val bytes =
+            byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) // fake jpeg
+        BitmapDecoder.decode(bytes, 100, 100)
     }
 
     @Test
@@ -49,5 +63,4 @@ class BitmapDecoderTest {
         assertEquals(51, BitmapDecoder.calculateInSampleSizeForThumb(10, 10))
         assertEquals(25, BitmapDecoder.calculateInSampleSizeForThumb(20, 20))
     }
-
 }

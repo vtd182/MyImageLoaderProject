@@ -2,6 +2,7 @@ package com.example.imageloader.target
 
 
 import android.widget.ImageView
+import androidx.core.view.doOnAttach
 import androidx.core.view.doOnDetach
 import com.example.imageloader.core.EngineResource
 
@@ -33,10 +34,12 @@ class ImageViewTarget(private val imageView: ImageView) : Target {
             android.util.Log.e("ImageViewTarget", "❌ Failed to set bitmap", e)
         }
 
-        // clear on detach
-        imageView.doOnDetach {
-            current?.release()
-            current = null
+
+        imageView.doOnAttach {
+            it.doOnDetach {
+                current?.release()
+                current = null
+            }
         }
     }
 

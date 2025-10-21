@@ -67,47 +67,47 @@ class Engine(
 
         // 3️⃣ Disk Cache (raw bytes) → decode + transform lại
         diskCache.get(dataKey)?.let { bytes ->
-        logDuration("DiskCache")
-        return engineScope.launch {
-        try {
-        // 🕐 Decode
-        var bitmap = BitmapDecoder.decode(
-        bytes,
-        req.resizeWidth ?: 0,
-        req.resizeHeight ?: 0,
-        )
+            logDuration("DiskCache")
+            return engineScope.launch {
+                try {
+                    // 🕐 Decode
+                    var bitmap = BitmapDecoder.decode(
+                        bytes,
+                        req.resizeWidth ?: 0,
+                        req.resizeHeight ?: 0,
+                    )
 
-        // 🕐 Transform lại (nếu có)
-        if (req.transformations.isNotEmpty()) {
-        val t = measureTimeMillis {
-        bitmap = withContext(Dispatchers.Default) {
-        req.transformations.fold(bitmap) { bmp, transform ->
-        transform.transform(
-        bitmapPool,
-        bmp,
-        req.outWidth ?: req.resizeWidth ?: bmp.width,
-        req.outHeight ?: req.resizeHeight ?: bmp.height
-        )
-        }
-        }
-        }
-        Log.d(
-        TAG,
-        "[Transform from Disk] $t ms (${req.transformations.size} transforms)"
-        )
-        }
+                    // 🕐 Transform lại (nếu có)
+                    if (req.transformations.isNotEmpty()) {
+                        val t = measureTimeMillis {
+                            bitmap = withContext(Dispatchers.Default) {
+                                req.transformations.fold(bitmap) { bmp, transform ->
+                                    transform.transform(
+                                        bitmapPool,
+                                        bmp,
+                                        req.outWidth ?: req.resizeWidth ?: bmp.width,
+                                        req.outHeight ?: req.resizeHeight ?: bmp.height
+                                    )
+                                }
+                            }
+                        }
+                        Log.d(
+                            TAG,
+                            "[Transform from Disk] $t ms (${req.transformations.size} transforms)"
+                        )
+                    }
 
-        val res = EngineResource(key, bitmap, activeResources)
-        activeResources.put(key, res)
+                    val res = EngineResource(key, bitmap, activeResources)
+                    activeResources.put(key, res)
 
-        withContext(Dispatchers.Main) {
-        target.onResourceReady(res)
-        }
-        } catch (e: Exception) {
-        Log.e(TAG, "Disk decode/transform failed: $key", e)
-        withContext(Dispatchers.Main) { target.onLoadFailed() }
-        }
-        }
+                    withContext(Dispatchers.Main) {
+                        target.onResourceReady(res)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Disk decode/transform failed: $key", e)
+                    withContext(Dispatchers.Main) { target.onLoadFailed() }
+                }
+            }
         }
 
         // 4️⃣ Network fetch + decode + transform
@@ -184,7 +184,7 @@ class Engine(
     }
 
 
-    private fun buildKey(req: Request): String {
+    fun buildKey(req: Request): String {
         val rawKey = buildString {
             append(req.url)
             if (req.resizeWidth != null && req.resizeHeight != null)
@@ -200,7 +200,7 @@ class Engine(
         return rawKey.md5()
     }
 
-    private fun buildDataKey(req: Request): String {
+    fun buildDataKey(req: Request): String {
         val rawKey = buildString {
             append(req.url)
             if (req.resizeWidth != null && req.resizeHeight != null)
