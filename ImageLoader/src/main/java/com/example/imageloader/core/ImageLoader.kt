@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.imageloader.cache.ActiveResources
 import com.example.imageloader.cache.DiskCache
 import com.example.imageloader.cache.MemoryCache
+import com.example.imageloader.decode.BitmapDecoder
 import com.example.imageloader.fetcher.HttpFetcher
 
 class ImageLoader private constructor(context: Context) {
@@ -15,6 +16,14 @@ class ImageLoader private constructor(context: Context) {
     private val memoryCache =
         MemoryCache((Runtime.getRuntime().maxMemory() / 8).toInt(), bitmapPool)
     val engine = Engine(activeResources, memoryCache, diskCache, fetcher, bitmapPool)
+    
+    init {
+        // Set bitmap pool for decoder to reuse bitmaps
+        BitmapDecoder.setBitmapPool(bitmapPool)
+        // Enable/disable bitmap pool usage for decode
+        // Set to false for better FPS, true for less GC
+        BitmapDecoder.setUseBitmapPool(false)
+    }
 
     companion object {
         @Volatile

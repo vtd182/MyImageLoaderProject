@@ -23,21 +23,13 @@ class CenterCropRoundedCorners(val radius: Float) :
             return toTransform
         }
 
-        // ✅ Lấy bitmap mới hoặc từ pool, luôn làm sạch
         val result = createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
-        if (result === toTransform) {
-            // Nếu pool trả chính bitmap này thì tạo bản copy tránh đè lên
-            return toTransform.copy(Bitmap.Config.ARGB_8888, false)
-        }
-
-        result.eraseColor(0) // đảm bảo canvas trống
 
         val safeBitmap = if (toTransform.isMutable && !toTransform.isRecycled)
             toTransform else toTransform.copy(Bitmap.Config.ARGB_8888, false)
 
         val canvas = Canvas(result)
 
-        // ✅ Tính toán crop trung tâm
         val scale = max(
             outWidth.toFloat() / safeBitmap.width,
             outHeight.toFloat() / safeBitmap.height
