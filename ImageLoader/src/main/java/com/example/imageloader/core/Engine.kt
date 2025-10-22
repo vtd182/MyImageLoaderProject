@@ -47,29 +47,39 @@ class Engine(
         fun logDuration(stage: String) {
             val elapsed = System.currentTimeMillis() - startTime
             Log.d(TAG, "[$stage] Completed in ${elapsed}ms -> $key")
-            }
+        }
 
-            // 1️⃣ Active Resources
-            activeResources.get(key)?.let { resource ->
-            // Check if resource is still valid (not released)
-            if (!resource.isReleased()) {
+        // 1️⃣ Active Resources
+        activeResources.get(key)?.let { resource ->
+            // Check if resource is still valid (not released and bitmap not recycled)
+            if (!resource.isReleased() && !resource.getBitmap().isRecycled) {
                 logDuration("ActiveResource")
-                    target.onResourceReady(resource)
-                    return Job().apply { complete() }
-                } else {
-                    // Remove stale resource from active cache
+                target.onResourceReady(resource)
+                return Job().apply { complete() }
+            } else {
+                // Remove stale resource from active cache
+                Log.w(
+                    TAG,
+                    "Found invalid resource in active cache, removing: $key (released=${resource.isReleased()}, recycled=${resource.getBitmap().isRecycled})"
+                )
                 activeResources.remove(key)
             }
-            }
+        }
 
-            // 2️⃣ Memory Cache
-            memoryCache.get(key)?.let { bitmap ->
-            logDuration("MemoryCache")
-            val res = EngineResource(key, bitmap, activeResources)
-            activeResources.put(key, res)
+        // 2️⃣ Memory Cache
+        memoryCache.get(key)?.let { bitmap ->
+            if (!bitmap.isRecycled) {
+                logDuration("MemoryCache")
+                val res = EngineResource(key, bitmap, activeResources)
+                activeResources.put(key, res)
                 target.onResourceReady(res)
-            return Job().apply { complete() }
+                return Job().apply { complete() }
+            } else {
+                // Remove recycled bitmap from cache
+                Log.w(TAG, "Found recycled bitmap in memory cache, removing: $key")
+                memoryCache.remove(key)
             }
+        }
 
         // 3️⃣ Disk Cache (raw bytes) → decode + transform lại
         diskCache.get(dataKey)?.let { bytes ->
