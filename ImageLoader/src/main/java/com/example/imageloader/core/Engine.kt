@@ -47,23 +47,29 @@ class Engine(
         fun logDuration(stage: String) {
             val elapsed = System.currentTimeMillis() - startTime
             Log.d(TAG, "[$stage] Completed in ${elapsed}ms -> $key")
-        }
+            }
 
-        // 1️⃣ Active Resources
-        activeResources.get(key)?.let {
-            logDuration("ActiveResource")
-            target.onResourceReady(it)
-            return Job().apply { complete() }
-        }
+            // 1️⃣ Active Resources
+            activeResources.get(key)?.let { resource ->
+            // Check if resource is still valid (not released)
+            if (!resource.isReleased()) {
+                logDuration("ActiveResource")
+                    target.onResourceReady(resource)
+                    return Job().apply { complete() }
+                } else {
+                    // Remove stale resource from active cache
+                activeResources.remove(key)
+            }
+            }
 
-        // 2️⃣ Memory Cache
-        memoryCache.get(key)?.let { bitmap ->
+            // 2️⃣ Memory Cache
+            memoryCache.get(key)?.let { bitmap ->
             logDuration("MemoryCache")
             val res = EngineResource(key, bitmap, activeResources)
             activeResources.put(key, res)
-            target.onResourceReady(res)
+                target.onResourceReady(res)
             return Job().apply { complete() }
-        }
+            }
 
         // 3️⃣ Disk Cache (raw bytes) → decode + transform lại
         diskCache.get(dataKey)?.let { bytes ->
@@ -105,7 +111,13 @@ class Engine(
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Disk decode/transform failed: $key", e)
-                    withContext(Dispatchers.Main) { target.onLoadFailed() }
+                    withContext(Dispatchers.Main) {
+                        target.onLoadFailed {
+                            engineScope.launch {
+                                withContext(Dispatchers.Main) { load(req, target) }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -176,7 +188,13 @@ class Engine(
                     is CancellationException -> Log.d(TAG, "Cancelled loading: $key")
                     else -> {
                         Log.e(TAG, "Load failed: $key", e)
-                        withContext(Dispatchers.Main) { target.onLoadFailed() }
+                        withContext(Dispatchers.Main) {
+                            target.onLoadFailed {
+                                engineScope.launch {
+                                    withContext(Dispatchers.Main) { load(req, target) }
+                                }
+                            }
+                        }
                     }
                 }
             }

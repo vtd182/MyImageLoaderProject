@@ -20,6 +20,8 @@ class EngineResource(
         check(!released.get()) { "Cannot acquire a released resource" }
         refCount++
     }
+    
+    fun isReleased(): Boolean = released.get()
 
 
     @Synchronized
@@ -49,6 +51,4 @@ class EngineResource(
     fun recycle() {
         if (!bitmap.isRecycled) bitmap.recycle()
     }
-
-    fun isReleased(): Boolean = released.get()
 }

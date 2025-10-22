@@ -22,6 +22,7 @@ class RequestBuilder(
     private var useDiskCache: Boolean = true
     private var placeholderRes: Int? = null
     private var placeholderColor: Int? = null
+    private var errorRes: Int? = null
     private var outHeight: Int? = null
     private var outWidth: Int? = null
     private val transformations = mutableListOf<Transformation>()
@@ -58,7 +59,11 @@ class RequestBuilder(
             outWidth,
             outHeight
         )
-        val target = ImageViewTarget(imageView)
+        
+        val errorDrawable = errorRes?.let { 
+            AppCompatResources.getDrawable(imageView.context, it)
+        }
+        val target = ImageViewTarget(imageView, errorDrawable)
 
         // apply overrideSize vào layout
         if (outWidth != null && outHeight != null) {
@@ -86,6 +91,11 @@ class RequestBuilder(
                 android.graphics.Color.WHITE
             }
         }
+        return this
+    }
+
+    fun error(resId: Int): RequestBuilder {
+        errorRes = resId
         return this
     }
 

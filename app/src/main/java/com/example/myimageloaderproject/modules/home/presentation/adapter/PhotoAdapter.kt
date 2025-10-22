@@ -64,6 +64,7 @@ class PhotoAdapter(
                 val request = ImageLoader.with(imgPhoto.context)
                     .overrideSize(itemWidth, itemHeight)
                     .placeholder(photo.color)
+                    .error(R.drawable.ic_retry)
                     .resize(400, 400)
                     .load(it)
 

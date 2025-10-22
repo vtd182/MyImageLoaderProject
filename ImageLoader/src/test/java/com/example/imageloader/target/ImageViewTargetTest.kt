@@ -98,11 +98,28 @@ class ImageViewTargetTest {
     }
 
     @Test
-    fun `onLoadFailed should set drawable to null`() {
+    fun `onLoadFailed should set drawable to error drawable or null`() {
         val activity =
             Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
         val imageView = ImageView(activity)
-        val target = ImageViewTarget(imageView)
+        val errorDrawable = ColorDrawable(0xFFFF0000.toInt())
+        val target = ImageViewTarget(imageView, errorDrawable)
+
+        imageView.setImageBitmap(Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888))
+
+        target.onLoadFailed()
+        Robolectric.flushForegroundThreadScheduler()
+
+        assertNotNull("Drawable should be error drawable after onLoadFailed", imageView.drawable)
+        assertEquals(errorDrawable, imageView.drawable)
+    }
+
+    @Test
+    fun `onLoadFailed without error drawable should set drawable to null`() {
+        val activity =
+            Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
+        val imageView = ImageView(activity)
+        val target = ImageViewTarget(imageView, null)
 
         imageView.setImageBitmap(Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888))
 
