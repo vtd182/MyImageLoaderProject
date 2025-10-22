@@ -2,16 +2,25 @@ package com.example.imageloader.cache
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 
 class DiskCache(
     context: Context,
-    private val maxSizeBytes: Long = 150L * 1000 * 1000, // 150MB
+    private val maxSizeBytes: Long = 50L * 1000 * 1000, // 150MB
     private val logger: Logger = AndroidLogger
 ) {
     private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var currentSize: Long = 0L
+    private var sizeInitialized = false
 
     /**
      * Đọc file từ cache, trả về raw bytes nếu có.
@@ -34,6 +43,8 @@ class DiskCache(
      */
     @Synchronized
     fun put(key: String, data: ByteArray, contentType: String? = null): Boolean {
+        ensureSizeInitialized()
+
         val extension = when (contentType?.lowercase()) {
             "image/jpeg", "image/jpg" -> ".jpg"
             "image/png" -> ".png"
@@ -46,13 +57,15 @@ class DiskCache(
         if (file.exists()) return true
 
         val estimatedSize = data.size.toLong()
-        val total = cacheDir.listFiles()?.sumOf { it.length() } ?: 0
-        if (total + estimatedSize > maxSizeBytes) {
+
+        // Use cached size instead of scanning all files
+        if (currentSize + estimatedSize > maxSizeBytes) {
             logger.wtf(
                 "DiskCache",
-                "Trim cache: total=$total, estimated=$estimatedSize, max=$maxSizeBytes"
+                "Trim cache needed: current=$currentSize, estimated=$estimatedSize, max=$maxSizeBytes"
             )
-            trimCache((total + estimatedSize) - maxSizeBytes)
+            // Trim asynchronously to avoid blocking
+            trimCacheAsync((currentSize + estimatedSize) - maxSizeBytes)
         }
 
         val tempFile = File(cacheDir, "${file.name}.tmp")
@@ -61,11 +74,26 @@ class DiskCache(
                 out.write(data)
                 out.flush()
             }
-            tempFile.renameTo(file)
+            val success = tempFile.renameTo(file)
+            if (success) {
+                currentSize += estimatedSize
+            }
+            success
         } catch (e: IOException) {
             logger.wtf("DiskCache", "put() failed: ${e.message}")
             tempFile.delete()
             false
+        }
+    }
+
+    private fun ensureSizeInitialized() {
+        if (sizeInitialized) return
+        sizeInitialized = true
+        // Calculate initial size in background
+        ioScope.launch {
+            val total = cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            currentSize = total
+            Log.d("DiskCache", "Initial cache size: $currentSize bytes")
         }
     }
 
@@ -75,18 +103,29 @@ class DiskCache(
     }
 
     /**
-     * Xóa file cũ nhất cho đến khi giải phóng đủ requiredFree bytes.
+     * Xóa file cũ nhất cho đến khi giải phóng đủ requiredFree bytes (async).
      */
-    private fun trimCache(requiredFree: Long) {
-        logger.wtf("DiskCache", "trimCache: $requiredFree")
-        var freed = 0L
-        cacheDir.listFiles()
-            ?.sortedBy { it.lastModified() }
-            ?.forEach {
-                if (freed >= requiredFree) return
-                val size = it.length()
-                if (it.delete()) freed += size
+    private fun trimCacheAsync(requiredFree: Long) {
+        ioScope.launch {
+            synchronized(this@DiskCache) {
+                logger.wtf("DiskCache", "trimCache async: $requiredFree")
+                var freed = 0L
+                cacheDir.listFiles()
+                    ?.sortedBy { it.lastModified() }
+                    ?.forEach {
+                        if (freed >= requiredFree) return@synchronized
+                        val size = it.length()
+                        if (it.delete()) {
+                            freed += size
+                            currentSize -= size
+                        }
+                    }
+                logger.wtf(
+                    "DiskCache",
+                    "trimCache completed: freed=$freed, currentSize=$currentSize"
+                )
             }
+        }
     }
 
     /**
