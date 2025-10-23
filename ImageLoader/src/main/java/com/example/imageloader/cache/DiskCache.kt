@@ -12,7 +12,7 @@ import java.io.IOException
 
 class DiskCache(
     context: Context,
-    private val maxSizeBytes: Long = 50L * 1000 * 1000, // 150MB
+    private val maxSizeBytes: Long = 150L * 1000 * 1000, // 150MB
     private val logger: Logger = AndroidLogger
 ) {
     private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
