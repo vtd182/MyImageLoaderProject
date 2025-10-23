@@ -1,8 +1,11 @@
 package com.example.myimageloaderproject.modules.home.presentation
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myimageloaderproject.di.Injector
+import com.example.myimageloaderproject.modules.home.data.cache.JsonBackupManager
+import com.example.myimageloaderproject.modules.home.data.cache.PhotoPreloader
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +22,7 @@ sealed class HomeUiState {
     ) : HomeUiState()
 }
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val getRandomPhotosUseCase = Injector.getRandomPhotosUseCase
 
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.InitLoading)
@@ -28,6 +31,9 @@ class HomeViewModel : ViewModel() {
     private var currentPage = 1
     private var perPage = 25
     private var isLoading = false
+    
+    private val photoPreloader = PhotoPreloader(getRandomPhotosUseCase, viewModelScope)
+    private val backupManager = JsonBackupManager(application)
 
     fun loadPhotos() {
         if (isLoading) return
@@ -35,9 +41,29 @@ class HomeViewModel : ViewModel() {
         _uiState.value = HomeUiState.InitLoading
         viewModelScope.launch {
             try {
+                val backup = backupManager.loadBackup()
+                if (backup != null && backup.photos.isNotEmpty()) {
+                    currentPage = backup.currentPage
+                    _uiState.value = HomeUiState.Data(backup.photos)
+                    isLoading = false
+                    
+                    viewModelScope.launch {
+                        photoPreloader.preloadPages(currentPage)
+                    }
+                    return@launch
+                }
+                
                 val newPhotos = getRandomPhotosUseCase(perPage, 1)
+                
                 currentPage = 1
                 _uiState.value = HomeUiState.Data(newPhotos)
+                
+                // Preload in background without blocking
+                viewModelScope.launch {
+                    photoPreloader.preloadPages(currentPage)
+                }
+                
+                backupManager.saveBackup(newPhotos, currentPage)
             } catch (e: Exception) {
                 _uiState.value = HomeUiState.InitError(e)
             } finally {
@@ -45,7 +71,7 @@ class HomeViewModel : ViewModel() {
             }
         }
     }
-
+    
     fun refresh() {
         if (isLoading) return
         isLoading = true
@@ -55,9 +81,15 @@ class HomeViewModel : ViewModel() {
         }
         viewModelScope.launch {
             try {
+                photoPreloader.clear()
+                
                 val newPhotos = getRandomPhotosUseCase(perPage, 1)
                 currentPage = 1
                 _uiState.value = HomeUiState.Data(newPhotos)
+                
+                photoPreloader.preloadPages(currentPage)
+                
+                backupManager.saveBackup(newPhotos, currentPage)
             } catch (e: Exception) {
                 _uiState.value = HomeUiState.InitError(e)
             } finally {
@@ -67,7 +99,6 @@ class HomeViewModel : ViewModel() {
     }
 
     fun loadMorePhotos() {
-        // Nếu đang load thì không làm gì
         if (isLoading) return
         val current = _uiState.value
         if (current !is HomeUiState.Data) return
@@ -77,8 +108,15 @@ class HomeViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                val newPhotosRaw = getRandomPhotosUseCase(perPage, currentPage + 1)
-                currentPage++
+                val nextPage = currentPage + 1
+                
+                val newPhotosRaw = if (photoPreloader.hasPreloadedPage(nextPage)) {
+                    photoPreloader.getPreloadedPage(nextPage) ?: getRandomPhotosUseCase(perPage, nextPage)
+                } else {
+                    getRandomPhotosUseCase(perPage, nextPage)
+                }
+                
+                currentPage = nextPage
 
                 val newPhotos = if (newPhotosRaw.size > 3) {
                     newPhotosRaw.drop(3)
@@ -87,28 +125,27 @@ class HomeViewModel : ViewModel() {
                 }
 
                 val finalList = current.photos.toMutableList()
-                val chunkSize = 5
-
-                for (chunk in newPhotos.chunked(chunkSize)) {
-                    finalList.addAll(chunk)
-                    _uiState.value = HomeUiState.Data(
-                        photos = finalList.toList(),
-                        isRefreshing = false,
-                        isLoadingMore = true
-                    )
-                    kotlinx.coroutines.delay(120)
-                }
+                finalList.addAll(newPhotos)
 
                 _uiState.value = HomeUiState.Data(
                     photos = finalList,
                     isRefreshing = false,
                     isLoadingMore = false
                 )
+                
+                photoPreloader.preloadPages(currentPage)
+                
+                backupManager.saveBackup(finalList, currentPage)
             } catch (e: Exception) {
                 _uiState.value = current.copy(isLoadingMore = false)
             } finally {
                 isLoading = false
             }
         }
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        photoPreloader.clear()
     }
 }

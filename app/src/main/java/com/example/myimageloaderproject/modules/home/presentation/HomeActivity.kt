@@ -107,10 +107,19 @@ class HomeActivity : AppCompatActivity() {
         viewModel.loadPhotos()
 
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            private var lastScrollTime = 0L
+            private var lastDy = 0
+            
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(rv, dx, dy)
+                
+                val currentTime = System.currentTimeMillis()
+                val isFastScroll = currentTime - lastScrollTime < 16 && Math.abs(dy) > Math.abs(lastDy * 1.5)
+                lastScrollTime = currentTime
+                lastDy = dy
+                
                 val lastVisible = layoutManager.findLastVisibleItemPosition()
-                if (lastVisible >= adapter.itemCount - 3) {
+                if (lastVisible >= adapter.itemCount - 8) {
                     viewModel.loadMorePhotos()
                 }
             }
@@ -118,12 +127,12 @@ class HomeActivity : AppCompatActivity() {
             override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
                 super.onScrollStateChanged(rv, newState)
                 when (newState) {
+                    RecyclerView.SCROLL_STATE_DRAGGING,
                     RecyclerView.SCROLL_STATE_SETTLING -> {
                         RequestManager.pauseAll()
                     }
 
                     RecyclerView.SCROLL_STATE_IDLE -> {
-                        // Resume chỉ ảnh đang hiển thị
                         val visibleViews = mutableListOf<ImageView>()
                         for (i in 0 until rv.childCount) {
                             val child = rv.getChildAt(i)
