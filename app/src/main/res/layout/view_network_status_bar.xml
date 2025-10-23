@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/networkStatusBar"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#FF5252"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:visibility="gone">
+
+    <ImageView
+        android:id="@+id/networkStatusIcon"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:contentDescription="Network status"
+        android:src="@android:drawable/ic_dialog_alert"
+        app:tint="@android:color/white" />
+
+    <TextView
+        android:id="@+id/networkStatusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:text="Không có kết nối Internet"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+</LinearLayout>

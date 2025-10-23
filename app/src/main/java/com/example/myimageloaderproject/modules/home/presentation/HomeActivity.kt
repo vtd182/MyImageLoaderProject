@@ -5,13 +5,17 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.toColorInt
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -20,9 +24,15 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.example.imageloader.core.RequestManager
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.core.customView.FPSOverlay
+import com.example.myimageloaderproject.core.error.AppError
+import com.example.myimageloaderproject.core.error.ErrorHandler
+import com.example.myimageloaderproject.core.network.NetworkMonitor
+import com.example.myimageloaderproject.core.network.NetworkStatus
 import com.example.myimageloaderproject.modules.home.presentation.adapter.PhotoAdapter
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 class HomeActivity : AppCompatActivity() {
     private var adapterCornerEnabled = false
@@ -35,10 +45,15 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var btnToggleCorner: Button
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var footerLoading: View
+    private lateinit var networkStatusBar: LinearLayout
+    private lateinit var networkStatusText: TextView
 
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     private var spanCount = 2
     private lateinit var layoutManager: GridLayoutManager
+
+    private lateinit var networkMonitor: NetworkMonitor
+    private var wasOffline = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +67,10 @@ class HomeActivity : AppCompatActivity() {
         btnToggleCorner = findViewById(R.id.btnToggleCorner)
         swipeRefresh = findViewById(R.id.swipeRefresh)
         footerLoading = findViewById(R.id.footerLoading)
+        networkStatusBar = findViewById(R.id.networkStatusBar)
+        networkStatusText = networkStatusBar.findViewById(R.id.networkStatusText)
+
+        networkMonitor = NetworkMonitor(this)
 
         adapter = PhotoAdapter { spanCount }
 
@@ -91,8 +110,8 @@ class HomeActivity : AppCompatActivity() {
             val enabled = !adapterCornerEnabled
             adapter.setCornerEnabled(enabled)
 
-            // Notify all items to ensure proper reload and avoid duplicates
-            adapter.notifyDataSetChanged()
+            // Notify all items with specific range change (more efficient than notifyDataSetChanged)
+            adapter.notifyItemRangeChanged(0, adapter.itemCount)
 
             adapterCornerEnabled = enabled
             val msg = if (enabled) "Đã bật bo góc ảnh" else "Đã tắt bo góc ảnh"
@@ -104,23 +123,30 @@ class HomeActivity : AppCompatActivity() {
         }
 
         observeData()
+        observeNetworkStatus()
         viewModel.loadPhotos()
 
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             private var lastScrollTime = 0L
             private var lastDy = 0
-            
+
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(rv, dx, dy)
-                
+
                 val currentTime = System.currentTimeMillis()
-                val isFastScroll = currentTime - lastScrollTime < 16 && Math.abs(dy) > Math.abs(lastDy * 1.5)
+                val isFastScroll =
+                    currentTime - lastScrollTime < 16 && abs(dy) > abs(lastDy * 1.5)
                 lastScrollTime = currentTime
                 lastDy = dy
-                
+
                 val lastVisible = layoutManager.findLastVisibleItemPosition()
+
                 if (lastVisible >= adapter.itemCount - 8) {
-                    viewModel.loadMorePhotos()
+                    viewModel.loadMorePhotos(showLoading = false)
+                }
+
+                if (lastVisible >= adapter.itemCount - 2) {
+                    viewModel.loadMorePhotos(showLoading = true)
                 }
             }
 
@@ -169,7 +195,14 @@ class HomeActivity : AppCompatActivity() {
 
                     is HomeUiState.InitError -> {
                         progressBar.visibility = View.GONE
-                        errorLayout.visibility = View.VISIBLE
+
+                        if (state.hasBackupData) {
+                            errorLayout.visibility = View.GONE
+                            showErrorSnackbar(state.error)
+                        } else {
+                            errorLayout.visibility = View.VISIBLE
+                            showErrorMessage(state.error)
+                        }
                     }
 
                     is HomeUiState.Data -> {
@@ -179,10 +212,112 @@ class HomeActivity : AppCompatActivity() {
                         swipeRefresh.isRefreshing = state.isRefreshing
                         footerLoading.visibility =
                             if (state.isLoadingMore) View.VISIBLE else View.GONE
+
+                        if (state.isOffline && state.photos.isNotEmpty()) {
+                            Toast.makeText(
+                                this@HomeActivity,
+                                "Đang hiển thị dữ liệu offline",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+
+                        state.error?.let { error ->
+                            showErrorSnackbar(error)
+                            viewModel.clearError()
+                        }
                     }
                 }
             }
         }
+    }
+
+    private fun observeNetworkStatus() {
+        lifecycleScope.launch {
+            networkMonitor.networkStatus.collectLatest { status ->
+                when (status) {
+                    NetworkStatus.Available -> {
+                        networkStatusBar.setBackgroundColor("#4CAF50".toColorInt())
+                        networkStatusText.text = "Đã kết nối Internet"
+
+                        if (wasOffline) {
+                            animateNetworkStatusBar(show = true)
+
+                            lifecycleScope.launch {
+                                kotlinx.coroutines.delay(1500)
+                                animateNetworkStatusBar(show = false)
+                                showRefreshSuggestion()
+                            }
+                            wasOffline = false
+                        }
+                    }
+
+                    NetworkStatus.Lost, NetworkStatus.Unavailable -> {
+                        networkStatusBar.setBackgroundColor("#FF5252".toColorInt())
+                        networkStatusText.text = "Không có kết nối Internet"
+                        animateNetworkStatusBar(show = true)
+                        wasOffline = true
+                    }
+
+                    NetworkStatus.Losing -> {
+                        networkStatusBar.setBackgroundColor("#FF9800".toColorInt())
+                        networkStatusText.text = "Kết nối không ổn định"
+                        animateNetworkStatusBar(show = true)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun animateNetworkStatusBar(show: Boolean) {
+        if (show) {
+            networkStatusBar.visibility = View.VISIBLE
+            val slideDown = AnimationUtils.loadAnimation(this, android.R.anim.slide_in_left)
+            networkStatusBar.startAnimation(slideDown)
+        } else {
+            val slideUp = AnimationUtils.loadAnimation(this, android.R.anim.slide_out_right)
+            slideUp.setAnimationListener(object :
+                android.view.animation.Animation.AnimationListener {
+                override fun onAnimationStart(animation: android.view.animation.Animation?) {}
+                override fun onAnimationEnd(animation: android.view.animation.Animation?) {
+                    networkStatusBar.visibility = View.GONE
+                }
+
+                override fun onAnimationRepeat(animation: android.view.animation.Animation?) {}
+            })
+            networkStatusBar.startAnimation(slideUp)
+        }
+    }
+
+    private fun showRefreshSuggestion() {
+        Snackbar.make(
+            findViewById(android.R.id.content),
+            "Internet đã kết nối trở lại",
+            Snackbar.LENGTH_LONG
+        ).setAction("Làm mới") {
+            viewModel.refresh()
+        }.show()
+    }
+
+    private fun showErrorMessage(error: AppError) {
+        val message = ErrorHandler.getErrorMessage(error)
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun showErrorSnackbar(error: AppError) {
+        val message = ErrorHandler.getErrorMessage(error)
+        val snackbar = Snackbar.make(
+            findViewById(android.R.id.content),
+            message,
+            if (error is AppError.RateLimitError) Snackbar.LENGTH_LONG else Snackbar.LENGTH_SHORT
+        )
+
+        if (ErrorHandler.shouldRetry(error) && error !is AppError.RateLimitError) {
+            snackbar.setAction("Thử lại") {
+                viewModel.refresh()
+            }
+        }
+
+        snackbar.show()
     }
 
     private fun updateSpanCount() {
