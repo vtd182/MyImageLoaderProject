@@ -34,8 +34,13 @@ class Engine(
     init {
         activeResources.setOnResourceReleased { key, resource ->
             val bitmap = resource.getBitmap()
-            memoryCache.put(key, bitmap)
-            Log.d(TAG, "Resource released -> moved to memoryCache: $key")
+            if (!bitmap.isRecycled) {
+                memoryCache.put(key, bitmap)
+                Log.d(TAG, "Resource released -> moved to memoryCache: $key")
+            } else {
+                Log.w(TAG, "Resource released but bitmap already recycled, skip caching: $key")
+                memoryCache.remove(key)
+            }
         }
     }
 
@@ -181,7 +186,6 @@ class Engine(
                 // 🕐 Cache
                 val cacheTime = measureTimeMillis {
                     if (req.useDiskCache) diskCache.put(dataKey, bytes, contentType)
-                    memoryCache.put(key, bitmap)
                 }
                 Log.d(TAG, "[Cache write] $cacheTime ms")
 
