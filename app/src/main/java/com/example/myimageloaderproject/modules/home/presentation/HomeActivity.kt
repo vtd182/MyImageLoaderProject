@@ -12,6 +12,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.chip.ChipGroup
+import com.google.android.material.switchmaterial.SwitchMaterial
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -42,7 +45,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var errorLayout: View
     private lateinit var btnRetry: Button
-    private lateinit var btnToggleCorner: Button
+    private lateinit var btnSettings: ImageView
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var footerLoading: View
     private lateinit var networkStatusBar: LinearLayout
@@ -64,7 +67,7 @@ class HomeActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         errorLayout = findViewById(R.id.errorLayout)
         btnRetry = findViewById(R.id.btnRetry)
-        btnToggleCorner = findViewById(R.id.btnToggleCorner)
+        btnSettings = findViewById(R.id.btnSettings)
         swipeRefresh = findViewById(R.id.swipeRefresh)
         footerLoading = findViewById(R.id.footerLoading)
         networkStatusBar = findViewById(R.id.networkStatusBar)
@@ -102,20 +105,8 @@ class HomeActivity : AppCompatActivity() {
         )
 
         btnRetry.setOnClickListener { viewModel.loadPhotos() }
-        btnToggleCorner.setOnClickListener {
-            // Debounce: disable button to prevent rapid clicks
-            btnToggleCorner.isEnabled = false
-            btnToggleCorner.postDelayed({ btnToggleCorner.isEnabled = true }, 500)
-
-            val enabled = !adapterCornerEnabled
-            adapter.setCornerEnabled(enabled)
-
-            // Notify all items with specific range change (more efficient than notifyDataSetChanged)
-            adapter.notifyItemRangeChanged(0, adapter.itemCount)
-
-            adapterCornerEnabled = enabled
-            val msg = if (enabled) "Đã bật bo góc ảnh" else "Đã tắt bo góc ảnh"
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        btnSettings.setOnClickListener {
+            showSettingsBottomSheet()
         }
 
         swipeRefresh.setOnRefreshListener {
@@ -318,6 +309,59 @@ class HomeActivity : AppCompatActivity() {
         }
 
         snackbar.show()
+    }
+
+    private fun showSettingsBottomSheet() {
+        val bottomSheetDialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.bottom_sheet_settings, null)
+        bottomSheetDialog.setContentView(view)
+
+        val switchCorner = view.findViewById<SwitchMaterial>(R.id.switchCorner)
+        val chipGroup = view.findViewById<ChipGroup>(R.id.chipGroupColumns)
+        val chip1Column = view.findViewById<View>(R.id.chip1Column)
+        val chip2Columns = view.findViewById<View>(R.id.chip2Columns)
+        val chip3Columns = view.findViewById<View>(R.id.chip3Columns)
+        val btnClose = view.findViewById<Button>(R.id.btnClose)
+
+        // Set current states
+        switchCorner.isChecked = adapterCornerEnabled
+        when (spanCount) {
+            1 -> chipGroup.check(R.id.chip1Column)
+            2 -> chipGroup.check(R.id.chip2Columns)
+            3 -> chipGroup.check(R.id.chip3Columns)
+        }
+
+        // Corner toggle listener
+        switchCorner.setOnCheckedChangeListener { _, isChecked ->
+            adapterCornerEnabled = isChecked
+            adapter.setCornerEnabled(isChecked)
+            adapter.notifyItemRangeChanged(0, adapter.itemCount)
+            
+            val msg = if (isChecked) "Đã bật bo góc ảnh" else "Đã tắt bo góc ảnh"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        // Columns selection listener
+        chipGroup.setOnCheckedStateChangeListener { _, checkedIds ->
+            val newSpanCount = when (checkedIds.firstOrNull()) {
+                R.id.chip1Column -> 1
+                R.id.chip2Columns -> 2
+                R.id.chip3Columns -> 3
+                else -> spanCount
+            }
+            
+            if (newSpanCount != spanCount) {
+                spanCount = newSpanCount
+                updateSpanCount()
+                Toast.makeText(this, "Đã chuyển sang $spanCount cột", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnClose.setOnClickListener {
+            bottomSheetDialog.dismiss()
+        }
+
+        bottomSheetDialog.show()
     }
 
     private fun updateSpanCount() {

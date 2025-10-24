@@ -22,12 +22,16 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/btnToggleCorner"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingEnd="16dp"
-            android:text="Bo góc" />
+        <ImageView
+            android:id="@+id/btnSettings"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:contentDescription="Settings"
+            android:focusable="true"
+            android:padding="12dp"
+            android:src="@drawable/ic_menu_list" />
     </LinearLayout>
 
     <LinearLayout
@@ -45,71 +49,71 @@
             android:layout_height="match_parent">
 
             <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-            android:id="@+id/swipeRefresh"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
+                android:id="@+id/swipeRefresh"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recyclerView"
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:padding="4dp"
+                    android:scrollbars="vertical" />
+
+            </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+            <!-- Loading view -->
+            <ProgressBar
+                android:id="@+id/progressBar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center" />
+
+            <!-- Error view -->
+            <LinearLayout
+                android:id="@+id/errorLayout"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:clipToPadding="false"
-                android:padding="4dp"
-                android:scrollbars="vertical" />
+                android:gravity="center"
+                android:orientation="vertical"
+                android:visibility="gone">
 
-        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Đã xảy ra lỗi khi tải ảnh" />
 
-        <!-- Loading view -->
-        <ProgressBar
-            android:id="@+id/progressBar"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center" />
+                <Button
+                    android:id="@+id/btnRetry"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Thử lại" />
+            </LinearLayout>
 
-        <!-- Error view -->
-        <LinearLayout
-            android:id="@+id/errorLayout"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:visibility="gone">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Footer loading (load more) -->
+            <LinearLayout
+                android:id="@+id/footerLoading"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Đã xảy ra lỗi khi tải ảnh" />
+                android:layout_gravity="bottom"
+                android:background="?attr/colorSurface"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:padding="12dp"
+                android:visibility="gone">
 
-            <Button
-                android:id="@+id/btnRetry"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Thử lại" />
-        </LinearLayout>
+                <ProgressBar
+                    android:layout_width="24dp"
+                    android:layout_height="24dp" />
 
-
-        <!-- Footer loading (load more) -->
-        <LinearLayout
-            android:id="@+id/footerLoading"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom"
-            android:background="?attr/colorSurface"
-            android:gravity="center"
-            android:orientation="horizontal"
-            android:padding="12dp"
-            android:visibility="gone">
-
-            <ProgressBar
-                android:layout_width="24dp"
-                android:layout_height="24dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="Đang tải thêm..." />
-        </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="Đang tải thêm..." />
+            </LinearLayout>
 
         </FrameLayout>
 
