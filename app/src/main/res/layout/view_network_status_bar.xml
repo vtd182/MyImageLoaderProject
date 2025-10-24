@@ -23,7 +23,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
-        android:text="Không có kết nối Internet"
+        android:text="@string/network_disconnected"
         android:textColor="@android:color/white"
         android:textSize="14sp"
         android:textStyle="bold" />

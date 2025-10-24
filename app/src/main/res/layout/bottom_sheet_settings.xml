@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Cài đặt hiển thị"
+        android:text="@string/settings_title"
         android:textSize="20sp"
         android:textStyle="bold"
         android:paddingBottom="16dp" />
@@ -33,7 +33,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Bo góc ảnh"
+            android:text="@string/corner_rounded"
             android:textSize="16sp"
             android:paddingStart="16dp" />
 
@@ -73,7 +73,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Số cột hiển thị"
+                android:text="@string/grid_columns"
                 android:textSize="16sp"
                 android:paddingStart="16dp" />
         </LinearLayout>
@@ -91,14 +91,14 @@
                 style="@style/Widget.Material3.Chip.Filter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="1 cột" />
+                android:text="@string/column_1" />
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/chip2Columns"
                 style="@style/Widget.Material3.Chip.Filter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="2 cột"
+                android:text="@string/column_2"
                 android:checked="true" />
 
             <com.google.android.material.chip.Chip
@@ -106,7 +106,7 @@
                 style="@style/Widget.Material3.Chip.Filter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="3 cột" />
+                android:text="@string/column_3" />
         </com.google.android.material.chip.ChipGroup>
     </LinearLayout>
 
@@ -121,7 +121,7 @@
         android:id="@+id/btnClose"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Đóng"
+        android:text="@string/close"
         android:layout_marginTop="8dp" />
 
 </LinearLayout>

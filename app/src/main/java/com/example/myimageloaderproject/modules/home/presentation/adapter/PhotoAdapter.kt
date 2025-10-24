@@ -88,7 +88,7 @@ class PhotoAdapter(
             val context = view.context
             val dialog = BottomSheetDialog(context)
             val sheetView = LayoutInflater.from(context)
-                .inflate(R.layout.bottom_sheet_download, null)
+                .inflate(R.layout.bottom_sheet_download, view.parent as? ViewGroup, false)
             dialog.setContentView(sheetView)
 
             val btnDownload = sheetView.findViewById<TextView>(R.id.btnDownload)
@@ -96,7 +96,7 @@ class PhotoAdapter(
 
             btnDownload.setOnClickListener {
                 dialog.dismiss()
-                Toast.makeText(context, "Đang tải ảnh...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.downloading_image), Toast.LENGTH_SHORT).show()
                 downloadImage(
                     photo.urls.full ?: photo.urls.small ?: return@setOnClickListener,
                     context
@@ -140,7 +140,7 @@ class PhotoAdapter(
                         withContext(Dispatchers.Main) {
                             Toast.makeText(
                                 context,
-                                "Ảnh đã lưu vào thư mục Downloads",
+                                context.getString(R.string.download_success),
                                 Toast.LENGTH_LONG
                             )
                                 .show()
@@ -161,7 +161,7 @@ class PhotoAdapter(
                         withContext(Dispatchers.Main) {
                             Toast.makeText(
                                 context,
-                                "Ảnh đã lưu vào: ${file.absolutePath}",
+                                context.getString(R.string.download_success_path, file.absolutePath),
                                 Toast.LENGTH_LONG
                             )
                                 .show()
@@ -171,7 +171,7 @@ class PhotoAdapter(
                     withContext(Dispatchers.Main) {
                         Toast.makeText(
                             context,
-                            "Tải ảnh thất bại: ${e.message}",
+                            context.getString(R.string.download_failed, e.message),
                             Toast.LENGTH_SHORT
                         ).show()
                     }

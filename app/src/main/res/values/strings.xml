@@ -7,6 +7,49 @@
     <string name="second_fragment_label">Second Fragment</string>
     <string name="next">Next</string>
     <string name="previous">Previous</string>
+    
+    <!-- Home Screen -->
+    <string name="title_home">ZTF2025</string>
+    <string name="error_loading_photos">Đã xảy ra lỗi khi tải ảnh</string>
+    <string name="retry">Thử lại</string>
+    <string name="loading_more">Đang tải thêm…</string>
+    <string name="settings_description">Settings</string>
+    
+    <!-- Bottom Sheet Settings -->
+    <string name="settings_title">Cài đặt hiển thị</string>
+    <string name="corner_rounded">Bo góc ảnh</string>
+    <string name="grid_columns">Số cột hiển thị</string>
+    <string name="column_1">1 cột</string>
+    <string name="column_2">2 cột</string>
+    <string name="column_3">3 cột</string>
+    <string name="close">Đóng</string>
+    
+    <!-- Bottom Sheet Download -->
+    <string name="download_options">Tùy chọn ảnh</string>
+    <string name="download_image">Tải ảnh về máy</string>
+    <string name="cancel">Hủy</string>
+    
+    <!-- Network Status -->
+    <string name="network_disconnected">Không có kết nối Internet</string>
+    <string name="network_connected">Đã kết nối Internet</string>
+    <string name="network_unstable">Kết nối không ổn định</string>
+    <string name="network_reconnected">Internet đã kết nối trở lại</string>
+    <string name="refresh">Làm mới</string>
+    
+    <!-- Toast Messages -->
+    <string name="corner_enabled">Đã bật bo góc ảnh</string>
+    <string name="corner_disabled">Đã tắt bo góc ảnh</string>
+    <string name="columns_changed">Đã chuyển sang %d cột</string>
+    <string name="downloading_image">Đang tải ảnh…</string>
+    <string name="download_success">Ảnh đã lưu vào thư mục Downloads</string>
+    <string name="download_success_path">Ảnh đã lưu vào: %s</string>
+    <string name="download_failed">Tải ảnh thất bại: %s</string>
+    <string name="offline_data">Đang hiển thị dữ liệu offline</string>
+    <string name="offline_no_backup">Không có kết nối Internet. Dữ liệu cũ sẽ được hiển thị nếu có.</string>
+    <string name="refreshing">Đang làm mới…</string>
+    
+    <!-- Splash -->
+    <string name="app_version">v1.0.0 - ZT2Frame</string>
 
     <string name="lorem_ipsum">
         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam in scelerisque sem. Mauris

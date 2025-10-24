@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingBottom="8dp"
-        android:text="Tùy chọn ảnh"
+        android:text="@string/download_options"
         android:textSize="16sp"
         android:textStyle="bold" />
 
@@ -28,7 +28,7 @@
         android:clickable="true"
         android:focusable="true"
         android:padding="12dp"
-        android:text="Tải ảnh về máy" />
+        android:text="@string/download_image" />
 
     <TextView
         android:id="@+id/btnCancel"
@@ -38,6 +38,6 @@
         android:clickable="true"
         android:focusable="true"
         android:padding="12dp"
-        android:text="Hủy"
+        android:text="@string/cancel"
         android:textColor="#888" />
 </LinearLayout>

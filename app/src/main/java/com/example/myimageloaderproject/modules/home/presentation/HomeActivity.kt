@@ -12,9 +12,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.chip.ChipGroup
-import com.google.android.material.switchmaterial.SwitchMaterial
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -32,10 +29,12 @@ import com.example.myimageloaderproject.core.error.ErrorHandler
 import com.example.myimageloaderproject.core.network.NetworkMonitor
 import com.example.myimageloaderproject.core.network.NetworkStatus
 import com.example.myimageloaderproject.modules.home.presentation.adapter.PhotoAdapter
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 class HomeActivity : AppCompatActivity() {
     private var adapterCornerEnabled = false
@@ -125,8 +124,6 @@ class HomeActivity : AppCompatActivity() {
                 super.onScrolled(rv, dx, dy)
 
                 val currentTime = System.currentTimeMillis()
-                val isFastScroll =
-                    currentTime - lastScrollTime < 16 && abs(dy) > abs(lastDy * 1.5)
                 lastScrollTime = currentTime
                 lastDy = dy
 
@@ -207,7 +204,7 @@ class HomeActivity : AppCompatActivity() {
                         if (state.isOffline && state.photos.isNotEmpty()) {
                             Toast.makeText(
                                 this@HomeActivity,
-                                "Đang hiển thị dữ liệu offline",
+                                getString(R.string.offline_data),
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -228,7 +225,7 @@ class HomeActivity : AppCompatActivity() {
                 when (status) {
                     NetworkStatus.Available -> {
                         networkStatusBar.setBackgroundColor("#4CAF50".toColorInt())
-                        networkStatusText.text = "Đã kết nối Internet"
+                        networkStatusText.text = getString(R.string.network_connected)
 
                         if (wasOffline) {
                             animateNetworkStatusBar(show = true)
@@ -244,14 +241,14 @@ class HomeActivity : AppCompatActivity() {
 
                     NetworkStatus.Lost, NetworkStatus.Unavailable -> {
                         networkStatusBar.setBackgroundColor("#FF5252".toColorInt())
-                        networkStatusText.text = "Không có kết nối Internet"
+                        networkStatusText.text = getString(R.string.network_disconnected)
                         animateNetworkStatusBar(show = true)
                         wasOffline = true
                     }
 
                     NetworkStatus.Losing -> {
                         networkStatusBar.setBackgroundColor("#FF9800".toColorInt())
-                        networkStatusText.text = "Kết nối không ổn định"
+                        networkStatusText.text = getString(R.string.network_unstable)
                         animateNetworkStatusBar(show = true)
                     }
                 }
@@ -282,9 +279,9 @@ class HomeActivity : AppCompatActivity() {
     private fun showRefreshSuggestion() {
         Snackbar.make(
             findViewById(android.R.id.content),
-            "Internet đã kết nối trở lại",
+            getString(R.string.network_reconnected),
             Snackbar.LENGTH_LONG
-        ).setAction("Làm mới") {
+        ).setAction(getString(R.string.refresh)) {
             viewModel.refresh()
         }.show()
     }
@@ -313,14 +310,12 @@ class HomeActivity : AppCompatActivity() {
 
     private fun showSettingsBottomSheet() {
         val bottomSheetDialog = BottomSheetDialog(this)
-        val view = layoutInflater.inflate(R.layout.bottom_sheet_settings, null)
+        val view = layoutInflater.inflate(R.layout.bottom_sheet_settings, 
+            findViewById(android.R.id.content), false)
         bottomSheetDialog.setContentView(view)
 
         val switchCorner = view.findViewById<SwitchMaterial>(R.id.switchCorner)
         val chipGroup = view.findViewById<ChipGroup>(R.id.chipGroupColumns)
-        val chip1Column = view.findViewById<View>(R.id.chip1Column)
-        val chip2Columns = view.findViewById<View>(R.id.chip2Columns)
-        val chip3Columns = view.findViewById<View>(R.id.chip3Columns)
         val btnClose = view.findViewById<Button>(R.id.btnClose)
 
         // Set current states
@@ -336,8 +331,9 @@ class HomeActivity : AppCompatActivity() {
             adapterCornerEnabled = isChecked
             adapter.setCornerEnabled(isChecked)
             adapter.notifyItemRangeChanged(0, adapter.itemCount)
-            
-            val msg = if (isChecked) "Đã bật bo góc ảnh" else "Đã tắt bo góc ảnh"
+
+            val msg =
+                if (isChecked) getString(R.string.corner_enabled) else getString(R.string.corner_disabled)
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
 
@@ -349,11 +345,15 @@ class HomeActivity : AppCompatActivity() {
                 R.id.chip3Columns -> 3
                 else -> spanCount
             }
-            
+
             if (newSpanCount != spanCount) {
                 spanCount = newSpanCount
                 updateSpanCount()
-                Toast.makeText(this, "Đã chuyển sang $spanCount cột", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    getString(R.string.columns_changed, spanCount),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
 

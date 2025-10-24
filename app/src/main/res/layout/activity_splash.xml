@@ -22,7 +22,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="32dp"
-        android:text="v1.0.0 - ZT2Frame"
+        android:text="@string/app_version"
         android:textColor="#999999"
         android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="parent"
