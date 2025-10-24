@@ -58,6 +58,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val backup = backupManager.loadBackup()
                 if (backup != null && backup.photos.isNotEmpty()) {
                     currentPage = backup.currentPage
+                    Log.d("HomeViewModel", "Loaded backup: ${backup.photos.size} photos, currentPage=$currentPage")
                     _uiState.value = HomeUiState.Data(backup.photos)
                     isLoading = false
                     

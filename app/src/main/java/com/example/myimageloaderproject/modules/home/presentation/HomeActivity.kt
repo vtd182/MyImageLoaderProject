@@ -119,6 +119,7 @@ class HomeActivity : AppCompatActivity() {
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             private var lastScrollTime = 0L
             private var lastDy = 0
+            private var isScrollingUp = false
 
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(rv, dx, dy)
@@ -126,6 +127,7 @@ class HomeActivity : AppCompatActivity() {
                 val currentTime = System.currentTimeMillis()
                 lastScrollTime = currentTime
                 lastDy = dy
+                isScrollingUp = dy < 0
 
                 val lastVisible = layoutManager.findLastVisibleItemPosition()
 
@@ -141,9 +143,10 @@ class HomeActivity : AppCompatActivity() {
             override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
                 super.onScrollStateChanged(rv, newState)
                 when (newState) {
-                    RecyclerView.SCROLL_STATE_DRAGGING,
                     RecyclerView.SCROLL_STATE_SETTLING -> {
-                        RequestManager.pauseAll()
+                        if (!isScrollingUp) {
+                            RequestManager.pauseAll()
+                        }
                     }
 
                     RecyclerView.SCROLL_STATE_IDLE -> {
@@ -200,14 +203,6 @@ class HomeActivity : AppCompatActivity() {
                         swipeRefresh.isRefreshing = state.isRefreshing
                         footerLoading.visibility =
                             if (state.isLoadingMore) View.VISIBLE else View.GONE
-
-                        if (state.isOffline && state.photos.isNotEmpty()) {
-                            Toast.makeText(
-                                this@HomeActivity,
-                                getString(R.string.offline_data),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
 
                         state.error?.let { error ->
                             showErrorSnackbar(error)
@@ -310,8 +305,10 @@ class HomeActivity : AppCompatActivity() {
 
     private fun showSettingsBottomSheet() {
         val bottomSheetDialog = BottomSheetDialog(this)
-        val view = layoutInflater.inflate(R.layout.bottom_sheet_settings, 
-            findViewById(android.R.id.content), false)
+        val view = layoutInflater.inflate(
+            R.layout.bottom_sheet_settings,
+            findViewById(android.R.id.content), false
+        )
         bottomSheetDialog.setContentView(view)
 
         val switchCorner = view.findViewById<SwitchMaterial>(R.id.switchCorner)

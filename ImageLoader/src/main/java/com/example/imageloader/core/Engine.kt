@@ -328,9 +328,6 @@ class Engine(
             append(req.url)
             if (req.resizeWidth != null && req.resizeHeight != null)
                 append("#resize=${req.resizeWidth}x${req.resizeHeight}")
-            if (req.outWidth != null && req.outHeight != null)
-                append("#out=${req.outWidth}x${req.outHeight}")
-            // No transformations for data key
             append("#useMemory=${req.useMemoryCache}")
             append("#useDisk=${req.useDiskCache}")
         }

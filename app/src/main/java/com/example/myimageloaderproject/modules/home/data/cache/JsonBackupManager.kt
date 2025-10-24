@@ -38,7 +38,7 @@ class JsonBackupManager(private val context: Context) {
                 )
                 val json = gson.toJson(backup)
                 backupFile.writeText(json)
-                Log.d("JsonBackupManager", "Backup saved to: ${backupFile.absolutePath}")
+                Log.d("JsonBackupManager", "Backup saved: ${photos.size} photos, page $currentPage, to: ${backupFile.absolutePath}")
             } catch (e: Exception) {
                 Log.e("JsonBackupManager", "Failed to save backup", e)
                 e.printStackTrace()
@@ -65,7 +65,7 @@ class JsonBackupManager(private val context: Context) {
                     return@withContext null
                 }
                 
-                Log.d("JsonBackupManager", "Backup loaded from: ${backupFile.absolutePath}")
+                Log.d("JsonBackupManager", "Backup loaded: ${backup.photos.size} photos, page ${backup.currentPage}, from: ${backupFile.absolutePath}")
                 backup
             } catch (e: Exception) {
                 Log.e("JsonBackupManager", "Failed to load backup", e)

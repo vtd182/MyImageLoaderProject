@@ -52,7 +52,6 @@ class PhotoAdapter(
         private val tvDescription: TextView = itemView.findViewById(R.id.tvDescription)
 
         fun bind(photo: UnsplashPhoto, spanCount: Int) {
-            RequestManager.clear(imgPhoto)
             val screenWidth = itemView.resources.displayMetrics.widthPixels
             val spacing = (8 * itemView.resources.displayMetrics.density).toInt()
             val itemWidth = (screenWidth / spanCount) - spacing
@@ -188,7 +187,7 @@ class PhotoAdapter(
     }
 
     override fun onBindViewHolder(holder: PhotoViewHolder, position: Int) {
-        holder.imgPhoto.setImageDrawable(null)
+        RequestManager.clear(holder.imgPhoto)
         holder.bind(getItem(position), spanProvider())
     }
 
