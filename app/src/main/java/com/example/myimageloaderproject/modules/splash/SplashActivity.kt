@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.animation.AnimationUtils
 import android.widget.ImageView
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.myimageloaderproject.R
@@ -21,17 +20,28 @@ class SplashActivity : AppCompatActivity() {
         setContentView(R.layout.activity_splash)
 
         val logo = findViewById<ImageView>(R.id.splashLogo)
-        val appName = findViewById<TextView>(R.id.splashAppName)
-
         val fadeIn = AnimationUtils.loadAnimation(this, android.R.anim.fade_in)
         logo.startAnimation(fadeIn)
-        appName.startAnimation(fadeIn)
 
         lifecycleScope.launch {
             delay(1500)
             startActivity(Intent(this@SplashActivity, HomeActivity::class.java))
             finish()
+            applyTransition()
+        }
+    }
+
+    private fun applyTransition() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(
+                OVERRIDE_TRANSITION_OPEN,
+                android.R.anim.fade_in,
+                android.R.anim.fade_out
+            )
+        } else {
+            @Suppress("DEPRECATION")
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         }
     }
 }
+

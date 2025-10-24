@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">MyImageLoaderProject</string>
+    <string name="app_name">ZT2Frame</string>
     <string name="fps_display">FPS: %d</string>
     <string name="title_activity_test">TestActivity</string>
     <!-- Strings used for fragments for navigation -->
