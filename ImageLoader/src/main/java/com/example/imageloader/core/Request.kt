@@ -11,4 +11,5 @@ data class Request(
     val transformations: List<Transformation> = emptyList(),
     val outWidth: Int? = null,
     val outHeight: Int? = null,
+    val enableShimmer: Boolean = false,
 )

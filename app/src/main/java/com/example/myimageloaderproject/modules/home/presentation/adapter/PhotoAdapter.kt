@@ -65,6 +65,7 @@ class PhotoAdapter(
                     .placeholder(photo.color)
                     .error(R.drawable.ic_retry)
                     .resize(400, 400)
+                    .enableShimmer(true)
                     .load(it)
 
                 if (cornerEnabled) {
@@ -95,7 +96,11 @@ class PhotoAdapter(
 
             btnDownload.setOnClickListener {
                 dialog.dismiss()
-                Toast.makeText(context, context.getString(R.string.downloading_image), Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.downloading_image),
+                    Toast.LENGTH_SHORT
+                ).show()
                 downloadImage(
                     photo.urls.full ?: photo.urls.small ?: return@setOnClickListener,
                     context
@@ -160,7 +165,10 @@ class PhotoAdapter(
                         withContext(Dispatchers.Main) {
                             Toast.makeText(
                                 context,
-                                context.getString(R.string.download_success_path, file.absolutePath),
+                                context.getString(
+                                    R.string.download_success_path,
+                                    file.absolutePath
+                                ),
                                 Toast.LENGTH_LONG
                             )
                                 .show()

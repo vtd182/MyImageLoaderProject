@@ -2,6 +2,7 @@ package com.example.imageloader.target
 
 
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -12,17 +13,20 @@ import android.widget.ProgressBar
 import androidx.core.view.doOnAttach
 import androidx.core.view.doOnDetach
 import com.example.imageloader.core.EngineResource
+import com.example.imageloader.drawable.ShimmerDrawable
 
 
 class ImageViewTarget(
     private val imageView: ImageView,
-    private val errorDrawable: Drawable? = null
+    private val errorDrawable: Drawable? = null,
+    private val enableShimmer: Boolean = false
 ) : Target {
     private var current: EngineResource? = null
     private var retryCallback: (() -> Unit)? = null
     private val loadingHandler = Handler(Looper.getMainLooper())
     private var loadingRunnable: Runnable? = null
     private var progressBar: ProgressBar? = null
+    private var shimmerDrawable: ShimmerDrawable? = null
 
     companion object {
         private const val LOADING_DELAY_MS = 500L
@@ -32,17 +36,22 @@ class ImageViewTarget(
     override fun onLoadStarted() {
         loadingRunnable?.let { loadingHandler.removeCallbacks(it) }
 
-        // Clear placeholder background when starting to load
-        imageView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        if (enableShimmer) {
+            showShimmer()
+        } else {
+            // Clear placeholder background when starting to load
+            imageView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
 
-        loadingRunnable = Runnable {
-            showLoading()
+            loadingRunnable = Runnable {
+                showLoading()
+            }
+            loadingHandler.postDelayed(loadingRunnable!!, LOADING_DELAY_MS)
         }
-        loadingHandler.postDelayed(loadingRunnable!!, LOADING_DELAY_MS)
     }
 
     override fun onResourceReady(engineResource: EngineResource) {
         hideLoading()
+        hideShimmer()
         
         // clear old bitmap reference in ImageView
         imageView.setImageDrawable(null)
@@ -124,6 +133,45 @@ class ImageViewTarget(
         loadingRunnable?.let { loadingHandler.removeCallbacks(it) }
         loadingRunnable = null
         progressBar?.visibility = View.GONE
+    }
+
+    private fun showShimmer() {
+        val currentDrawable = imageView.drawable
+        android.util.Log.d("ImageViewTarget", "showShimmer - currentDrawable: $currentDrawable")
+        
+        // Extract color from placeholder drawable
+        val placeholderColor = if (currentDrawable is android.graphics.drawable.GradientDrawable) {
+            try {
+                // Try to get color from GradientDrawable
+                val colorState = currentDrawable.color
+                colorState?.defaultColor
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+        
+        if (shimmerDrawable == null) {
+            shimmerDrawable = ShimmerDrawable(placeholderColor)
+        }
+        
+        if (currentDrawable != null && currentDrawable !is ShimmerDrawable) {
+            val layers = arrayOf(currentDrawable, shimmerDrawable!!)
+            val layerDrawable = LayerDrawable(layers)
+            imageView.setImageDrawable(layerDrawable)
+            android.util.Log.d("ImageViewTarget", "Shimmer layer applied over placeholder with color: $placeholderColor")
+        } else {
+            imageView.setImageDrawable(shimmerDrawable)
+            android.util.Log.d("ImageViewTarget", "Shimmer drawable applied alone")
+        }
+        
+        shimmerDrawable?.start()
+    }
+
+    private fun hideShimmer() {
+        shimmerDrawable?.stop()
+        shimmerDrawable = null
     }
 
     override fun onPlaceholderColor(color: Int) {

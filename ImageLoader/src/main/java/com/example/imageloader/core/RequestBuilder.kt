@@ -25,6 +25,7 @@ class RequestBuilder(
     private var errorRes: Int? = null
     private var outHeight: Int? = null
     private var outWidth: Int? = null
+    private var enableShimmer: Boolean = false
     private val transformations = mutableListOf<Transformation>()
 
     fun transform(vararg transformations: Transformation): RequestBuilder {
@@ -57,13 +58,14 @@ class RequestBuilder(
             useDiskCache,
             transformations.toList(),
             outWidth,
-            outHeight
+            outHeight,
+            enableShimmer
         )
         
         val errorDrawable = errorRes?.let { 
             AppCompatResources.getDrawable(imageView.context, it)
         }
-        val target = ImageViewTarget(imageView, errorDrawable)
+        val target = ImageViewTarget(imageView, errorDrawable, enableShimmer)
 
         // apply overrideSize vào layout
         if (outWidth != null && outHeight != null) {
@@ -109,13 +111,18 @@ class RequestBuilder(
             useDiskCache,
             transformations.toList(),
             outWidth,
-            outHeight
+            outHeight,
+            enableShimmer
         )
         engine.load(request, target)
     }
 
     fun overrideSize(width: Int, height: Int): RequestBuilder {
         outWidth = width; outHeight = height; return this
+    }
+
+    fun enableShimmer(enable: Boolean = true): RequestBuilder {
+        enableShimmer = enable; return this
     }
 
     fun applyPlaceholder(imageView: ImageView) {
@@ -132,6 +139,18 @@ class RequestBuilder(
                 val shape = android.graphics.drawable.GradientDrawable().apply {
                     cornerRadius = radius
                     setColor(placeholderColor!!)
+                }
+                imageView.setImageDrawable(shape)
+            }
+
+            enableShimmer -> {
+                // Set default placeholder color when shimmer is enabled
+                val radius = transformations.filterIsInstance<CenterCropRoundedCorners>()
+                    .firstOrNull()?.radius ?: 0f
+
+                val shape = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = radius
+                    setColor(0xFFE0E0E0.toInt()) // Default gray color
                 }
                 imageView.setImageDrawable(shape)
             }

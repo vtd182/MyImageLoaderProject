@@ -158,6 +158,11 @@ class Engine(
         }
 
         // 3️⃣ Disk Cache or Network - use priority queue
+        // Notify target that loading has started
+        engineScope.launch(Dispatchers.Main) {
+            target.onLoadStarted()
+        }
+        
         val job = Job()
         val prioritizedReq = PrioritizedRequest(req, target, priority, job)
 
