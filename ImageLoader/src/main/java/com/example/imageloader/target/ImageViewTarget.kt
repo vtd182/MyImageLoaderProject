@@ -42,17 +42,17 @@ class ImageViewTarget(
             // Clear placeholder background when starting to load
             imageView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
 
-            loadingRunnable = Runnable {
-                showLoading()
-            }
-            loadingHandler.postDelayed(loadingRunnable!!, LOADING_DELAY_MS)
+//            loadingRunnable = Runnable {
+//                showLoading()
+//            }
+//            loadingHandler.postDelayed(loadingRunnable!!, LOADING_DELAY_MS)
         }
     }
 
     override fun onResourceReady(engineResource: EngineResource) {
-        hideLoading()
+        //hideLoading()
         hideShimmer()
-        
+
         // clear old bitmap reference in ImageView
         imageView.setImageDrawable(null)
 
@@ -87,16 +87,17 @@ class ImageViewTarget(
 
 
     override fun onLoadFailed(onRetry: (() -> Unit)?) {
-        hideLoading()
+        //hideLoading()
         retryCallback = onRetry
         imageView.setImageDrawable(errorDrawable)
+        imageView.setBackgroundColor(0xFFFFEB3B.toInt()) // Yellow background
 
         if (onRetry != null && errorDrawable != null) {
             imageView.setOnClickListener {
                 // Show loading immediately when user clicks retry
                 imageView.setImageDrawable(null)
                 imageView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                showLoading()
+                //showLoading()
                 onRetry.invoke()
             }
         } else {
@@ -138,7 +139,7 @@ class ImageViewTarget(
     private fun showShimmer() {
         val currentDrawable = imageView.drawable
         android.util.Log.d("ImageViewTarget", "showShimmer - currentDrawable: $currentDrawable")
-        
+
         // Extract color from placeholder drawable
         val placeholderColor = if (currentDrawable is android.graphics.drawable.GradientDrawable) {
             try {
@@ -151,21 +152,24 @@ class ImageViewTarget(
         } else {
             null
         }
-        
+
         if (shimmerDrawable == null) {
             shimmerDrawable = ShimmerDrawable(placeholderColor)
         }
-        
+
         if (currentDrawable != null && currentDrawable !is ShimmerDrawable) {
             val layers = arrayOf(currentDrawable, shimmerDrawable!!)
             val layerDrawable = LayerDrawable(layers)
             imageView.setImageDrawable(layerDrawable)
-            android.util.Log.d("ImageViewTarget", "Shimmer layer applied over placeholder with color: $placeholderColor")
+            android.util.Log.d(
+                "ImageViewTarget",
+                "Shimmer layer applied over placeholder with color: $placeholderColor"
+            )
         } else {
             imageView.setImageDrawable(shimmerDrawable)
             android.util.Log.d("ImageViewTarget", "Shimmer drawable applied alone")
         }
-        
+
         shimmerDrawable?.start()
     }
 
