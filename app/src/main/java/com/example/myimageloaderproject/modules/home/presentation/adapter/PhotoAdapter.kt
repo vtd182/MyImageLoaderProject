@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.imageloader.core.ImageLoader
 import com.example.imageloader.core.RequestManager
+import com.example.imageloader.core.RequestPriority
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
@@ -51,7 +52,7 @@ class PhotoAdapter(
         val imgPhoto: ImageView = itemView.findViewById(R.id.imgPhoto)
         private val tvDescription: TextView = itemView.findViewById(R.id.tvDescription)
 
-        fun bind(photo: UnsplashPhoto, spanCount: Int) {
+        fun bind(photo: UnsplashPhoto, spanCount: Int, priority: RequestPriority) {
             val screenWidth = itemView.resources.displayMetrics.widthPixels
             val spacing = (8 * itemView.resources.displayMetrics.density).toInt()
             val itemWidth = (screenWidth / spanCount) - spacing
@@ -66,6 +67,7 @@ class PhotoAdapter(
                     .error(R.drawable.ic_retry)
                     .resize(400, 400)
                     .enableShimmer(true)
+                    .priority(priority)
                     .load(it)
 
                 if (cornerEnabled) {
@@ -196,7 +198,12 @@ class PhotoAdapter(
 
     override fun onBindViewHolder(holder: PhotoViewHolder, position: Int) {
         RequestManager.clear(holder.imgPhoto)
-        holder.bind(getItem(position), spanProvider())
+        val priority = when {
+            position < 6 -> RequestPriority.HIGH
+            position < 20 -> RequestPriority.NORMAL
+            else -> RequestPriority.LOW
+        }
+        holder.bind(getItem(position), spanProvider(), priority)
     }
 
     override fun onViewRecycled(holder: PhotoViewHolder) {

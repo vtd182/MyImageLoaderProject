@@ -38,5 +38,9 @@ class ImageLoader private constructor(context: Context) {
         fun with(context: Context): RequestBuilder {
             return RequestBuilder(getInstance(context).engine)
         }
+        
+        fun setFastScrolling(context: Context, isFast: Boolean) {
+            getInstance(context).engine.setFastScrolling(isFast)
+        }
     }
 }

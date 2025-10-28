@@ -26,6 +26,7 @@ class RequestBuilder(
     private var outHeight: Int? = null
     private var outWidth: Int? = null
     private var enableShimmer: Boolean = false
+    private var priority: RequestPriority = RequestPriority.NORMAL
     private val transformations = mutableListOf<Transformation>()
 
     fun transform(vararg transformations: Transformation): RequestBuilder {
@@ -86,7 +87,7 @@ class RequestBuilder(
 
         // Miss cache -> check if paused
         val job = if (!RequestManager.isPaused()) {
-            engine.load(request, target)
+            engine.load(request, target, priority)
         } else null
 
         RequestManager.track(imageView, job, onResume = reload)
@@ -130,6 +131,10 @@ class RequestBuilder(
 
     fun enableShimmer(enable: Boolean = true): RequestBuilder {
         enableShimmer = enable; return this
+    }
+
+    fun priority(priority: RequestPriority): RequestBuilder {
+        this.priority = priority; return this
     }
 
     fun applyPlaceholder(imageView: ImageView) {
