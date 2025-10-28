@@ -12,6 +12,7 @@ object ImageLoaderLogger {
     
     var saveToActivity = true
     var jsonPhotoCount = 0
+    var jsonCurrentPage = 0
 
     fun log(log: ImageLoadLog) {
         logEntry(log)
@@ -100,6 +101,7 @@ object ImageLoaderLogger {
             imageErrors = imageLoadLogs.count { it.error != null },
             messageErrors = messageLogs.count { it.level == LogLevel.ERROR },
             jsonPhotoCount = jsonPhotoCount,
+            jsonCurrentPage = jsonCurrentPage,
             
             activeCacheCount = activeCache.size,
             activeCacheAvgTime = activeCache.map { it.totalTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
@@ -127,6 +129,7 @@ data class LogStats(
     val imageErrors: Int,
     val messageErrors: Int,
     val jsonPhotoCount: Int,
+    val jsonCurrentPage: Int,
     
     val activeCacheCount: Int,
     val activeCacheAvgTime: Double,

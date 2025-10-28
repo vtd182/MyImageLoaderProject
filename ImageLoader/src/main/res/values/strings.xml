@@ -14,14 +14,27 @@
     <!-- Stats Dialog -->
     <string name="imageloader_performance_stats">Performance Statistics</string>
     <string name="imageloader_summary">Summary</string>
-    <string name="imageloader_summary_placeholder">Total: 0 logs | Images: 0 | Errors: 0 | JSON: 0 photos</string>
-    <string name="imageloader_memory_cache_title">💚 Memory Cache (Active + Memory)</string>
-    <string name="imageloader_memory_stats_placeholder">Count: 0 images\nAvg Time: 0.0ms (instant)</string>
+    <string name="imageloader_total_logs">Total Logs</string>
+    <string name="imageloader_image_requests">Image Requests</string>
+    <string name="imageloader_total_errors">Total Errors</string>
+    <string name="imageloader_memory_cache_title">✅ Memory Cache</string>
+    <string name="imageloader_count">Count</string>
+    <string name="imageloader_avg_time">Avg Time</string>
     <string name="imageloader_disk_cache_title">🟠 Disk Cache</string>
-    <string name="imageloader_disk_stats_placeholder">Count: 0 images\nAvg Time: 0.0ms | Decode: 0.0ms | Transform: 0.0ms</string>
+    <string name="imageloader_decode_time">Decode Time</string>
+    <string name="imageloader_transform_time">Transform Time</string>
+    <string name="imageloader_json_backup_title">📦 JSON Backup</string>
+    <string name="imageloader_photos">Photos</string>
+    <string name="imageloader_current_page">Current Page</string>
     <string name="imageloader_network_title">🔴 Network</string>
-    <string name="imageloader_network_stats_placeholder">Count: 0 images\nAvg Time: 0.0ms | Fetch: 0.0ms | Decode: 0.0ms | Transform: 0.0ms</string>
+    <string name="imageloader_fetch_time">Fetch Time</string>
     <string name="imageloader_close">Close</string>
+
+    <!-- Placeholders -->
+    <string name="imageloader_placeholder_0">0</string>
+    <string name="imageloader_placeholder_0_images">0 images</string>
+    <string name="imageloader_placeholder_0ms">0.0ms</string>
+    <string name="imageloader_placeholder_instant">0.0ms (instant)</string>
 
     <!-- Filter Dialog -->
     <string name="imageloader_filter_by_category">Filter by Category</string>
@@ -38,4 +51,12 @@
     <string name="imageloader_view_image">View Image</string>
     <string name="imageloader_fast_scroll_icon">⚡</string>
     <string name="imageloader_default_stats">0 logs | Mem: 0 | Disk: 0 | Net: 0 | Err: 0</string>
+    <string name="imageloader_memory_cache_active_memory">Memory Cache (Active + Memory)</string>
+    <string name="imageloader_memory_cache_default_stats">Count: 0 images\nAvg Time: 0.0ms</string>
+    <string name="imageloader_disk_cache">Disk Cache</string>
+    <string name="imageloader_default_disk_cache_stats">Count: 0 images\nAvg Time: 0.0ms | Decode: 0.0ms | Transform: 0.0ms</string>
+    <string name="imageloader_json_backup">JSON Backup</string>
+    <string name="imageloader_json_backup_default_stats">Photos: 0 | Current Page: 0</string>
+    <string name="imageloader_network">Network</string>
+    <string name="imageloader_network_default_stats">Count: 0 images\nAvg Time: 0.0ms | Fetch: 0.0ms | Decode: 0.0ms | Transform: 0.0ms</string>
 </resources>

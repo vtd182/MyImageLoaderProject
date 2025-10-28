@@ -80,36 +80,31 @@ class LogViewerActivity : AppCompatActivity() {
         val dialogView = layoutInflater.inflate(R.layout.imageloader_dialog_stats, null)
         val stats = ImageLoaderLogger.getLogStats()
 
-        dialogView.findViewById<TextView>(R.id.txtDialogSummary).text = buildString {
-            append("Total: ${stats.totalLogs} logs | Images: ${stats.totalImageRequests}")
-            append(" | Errors: ${stats.imageErrors + stats.messageErrors}")
-            append(" | JSON: ${stats.jsonPhotoCount} photos")
-        }
+        dialogView.findViewById<TextView>(R.id.txtDialogTotalLogs).text = stats.totalLogs.toString()
+        dialogView.findViewById<TextView>(R.id.txtDialogImageRequests).text = stats.totalImageRequests.toString()
+        dialogView.findViewById<TextView>(R.id.txtDialogErrors).text = (stats.imageErrors + stats.messageErrors).toString()
 
         val totalMemory = stats.activeCacheCount + stats.memoryCacheCount
         val avgMemoryTime = if (totalMemory > 0) {
             ((stats.activeCacheAvgTime * stats.activeCacheCount + stats.memoryCacheAvgTime * stats.memoryCacheCount) / totalMemory)
         } else 0.0
 
-        dialogView.findViewById<TextView>(R.id.txtDialogMemory).text = buildString {
-            append("Count: $totalMemory images\n")
-            append("Avg Time: ${"%.1f".format(avgMemoryTime)}ms")
-        }
+        dialogView.findViewById<TextView>(R.id.txtDialogMemoryCount).text = "$totalMemory images"
+        dialogView.findViewById<TextView>(R.id.txtDialogMemoryTime).text = "${"%.1f".format(avgMemoryTime)}ms (instant)"
 
-        dialogView.findViewById<TextView>(R.id.txtDialogDisk).text = buildString {
-            append("Count: ${stats.diskCacheCount} images\n")
-            append("Avg Time: ${"%.1f".format(stats.diskCacheAvgTime)}ms")
-            append(" | Decode: ${"%.1f".format(stats.diskCacheAvgDecode)}ms")
-            append(" | Transform: ${"%.1f".format(stats.diskCacheAvgTransform)}ms")
-        }
+        dialogView.findViewById<TextView>(R.id.txtDialogDiskCount).text = "${stats.diskCacheCount} images"
+        dialogView.findViewById<TextView>(R.id.txtDialogDiskTime).text = "${"%.1f".format(stats.diskCacheAvgTime)}ms"
+        dialogView.findViewById<TextView>(R.id.txtDialogDiskDecode).text = "${"%.1f".format(stats.diskCacheAvgDecode)}ms"
+        dialogView.findViewById<TextView>(R.id.txtDialogDiskTransform).text = "${"%.1f".format(stats.diskCacheAvgTransform)}ms"
+        
+        dialogView.findViewById<TextView>(R.id.txtDialogJsonCount).text = stats.jsonPhotoCount.toString()
+        dialogView.findViewById<TextView>(R.id.txtDialogJsonPage).text = stats.jsonCurrentPage.toString()
 
-        dialogView.findViewById<TextView>(R.id.txtDialogNetwork).text = buildString {
-            append("Count: ${stats.networkCount} images\n")
-            append("Avg Time: ${"%.1f".format(stats.networkAvgTime)}ms")
-            append(" | Fetch: ${"%.1f".format(stats.networkAvgFetch)}ms")
-            append(" | Decode: ${"%.1f".format(stats.networkAvgDecode)}ms")
-            append(" | Transform: ${"%.1f".format(stats.networkAvgTransform)}ms")
-        }
+        dialogView.findViewById<TextView>(R.id.txtDialogNetworkCount).text = "${stats.networkCount} images"
+        dialogView.findViewById<TextView>(R.id.txtDialogNetworkTime).text = "${"%.1f".format(stats.networkAvgTime)}ms"
+        dialogView.findViewById<TextView>(R.id.txtDialogNetworkFetch).text = "${"%.1f".format(stats.networkAvgFetch)}ms"
+        dialogView.findViewById<TextView>(R.id.txtDialogNetworkDecode).text = "${"%.1f".format(stats.networkAvgDecode)}ms"
+        dialogView.findViewById<TextView>(R.id.txtDialogNetworkTransform).text = "${"%.1f".format(stats.networkAvgTransform)}ms"
 
         MaterialAlertDialogBuilder(this)
             .setView(dialogView)

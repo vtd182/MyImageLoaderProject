@@ -44,6 +44,7 @@ class JsonBackupManager(private val context: Context) {
                 val json = gson.toJson(backup)
                 backupFile.writeText(json)
                 ImageLoaderLogger.jsonPhotoCount = photos.size
+                ImageLoaderLogger.jsonCurrentPage = currentPage
                 ImageLoaderLogger.i(TAG, "JSON backup saved: ${photos.size} photos, page $currentPage", LogCategory.CACHE)
             } catch (e: Exception) {
                 ImageLoaderLogger.e(TAG, "Failed to save JSON backup", e, LogCategory.CACHE)
@@ -71,6 +72,7 @@ class JsonBackupManager(private val context: Context) {
                 }
                 
                 ImageLoaderLogger.jsonPhotoCount = backup.photos.size
+                ImageLoaderLogger.jsonCurrentPage = backup.currentPage
                 ImageLoaderLogger.i(TAG, "JSON backup loaded: ${backup.photos.size} photos, page ${backup.currentPage}", LogCategory.CACHE)
                 backup
             } catch (e: Exception) {
