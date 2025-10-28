@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="12dp"
+    android:layout_marginEnd="12dp"
+    android:layout_marginTop="6dp"
+    android:layout_marginBottom="6dp"
+    app:cardBackgroundColor="#FFFFFF"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/txtLogTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="12:34:56.789"
+                android:textSize="11sp"
+                android:textColor="#757575"
+                android:fontFamily="monospace" />
+
+            <TextView
+                android:id="@+id/txtLogIcon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✅"
+                android:layout_marginStart="8dp"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/txtLogSource"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="DISK_CACHE"
+                android:textSize="12sp"
+                android:textColor="#424242"
+                android:textStyle="bold"
+                android:layout_marginStart="8dp" />
+
+            <TextView
+                android:id="@+id/txtLogTotal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="245ms"
+                android:textSize="13sp"
+                android:textColor="#1976D2"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layoutTimings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/txtTimings"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="Fetch: 120ms | Decode: 80ms | Transform: 45ms"
+                android:textSize="10sp"
+                android:textColor="#616161"
+                android:fontFamily="monospace" />
+
+            <TextView
+                android:id="@+id/txtFastScroll"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚡"
+                android:textSize="12sp"
+                android:visibility="gone"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/txtLogUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="https://example.com/image.jpg"
+            android:textSize="10sp"
+            android:textColor="#757575"
+            android:layout_marginTop="6dp"
+            android:maxLines="2"
+            android:ellipsize="middle"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/txtLogError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Error: Connection timeout"
+            android:textSize="11sp"
+            android:textColor="#D32F2F"
+            android:layout_marginTop="6dp"
+            android:visibility="gone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenUrl"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="View Image"
+            android:textSize="11sp"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            android:textColor="#1976D2"
+            style="@style/Widget.MaterialComponents.Button.TextButton" />
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>
+

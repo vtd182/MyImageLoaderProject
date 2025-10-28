@@ -1,7 +1,6 @@
 package com.example.imageloader.core
 
 import android.graphics.Bitmap
-import android.util.Log
 import com.example.imageloader.core.abstract.ResourceListener
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -29,7 +28,6 @@ class EngineResource(
         check(refCount > 0) { "Cannot release a resource that is not acquired" }
         refCount--
         if (refCount == 0 && released.compareAndSet(false, true)) {
-            Log.d("Resource", "release: $key ")
             listener.onResourceReleased(key, this)
         }
     }

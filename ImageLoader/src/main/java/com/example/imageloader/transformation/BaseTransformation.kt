@@ -1,7 +1,6 @@
 package com.example.imageloader.transformation
 
 import android.graphics.Bitmap
-import android.util.Log
 import com.example.imageloader.core.abstract.BitmapPool
 
 
@@ -15,17 +14,7 @@ abstract class BaseTransformation(
         height: Int,
         config: Bitmap.Config = Bitmap.Config.ARGB_8888
     ): Bitmap {
-        val fromPool = pool.get(width, height, config)
-        return if (fromPool != null) {
-            Log.d(
-                "BaseTransformation",
-                "Reusing bitmap from pool: ${width}x${height}, config=$config"
-            )
-            fromPool
-        } else {
-            Log.d("BaseTransformation", "Creating new bitmap: ${width}x${height}, config=$config")
-            createBitmap(width, height, config)
-        }
+        return pool.get(width, height, config) ?: createBitmap(width, height, config)
     }
 
     protected fun createBitmap(width: Int, height: Int, config: Bitmap.Config): Bitmap {

@@ -1,16 +1,21 @@
 package com.example.imageloader.fetcher
 
-import android.util.Log
+import com.example.imageloader.logger.ImageLoaderLogger
+import com.example.imageloader.logger.LogCategory
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 
 class HttpFetcher(
-    private val maxRetries: Int = 5,
-    private val retryDelayMillis: Long = 1000,
+    private val maxRetries: Int = 2,
+    private val retryDelayMillis: Long = 700,
     private val onRetry: ((attempt: Int, maxRetries: Int, error: Exception) -> Unit)? = null,
     private val connectionFactory: ConnectionFactory = DefaultConnectionFactory
 ) : DataFetcher {
+
+    companion object {
+        private const val TAG = "HttpFetcher"
+    }
 
     override suspend fun fetch(url: String): HttpResult {
         var attempt = 0
@@ -43,13 +48,24 @@ class HttpFetcher(
 
                 return HttpResult(outputStream.toByteArray(), contentType)
             } catch (e: Exception) {
-                Log.e("HttpFetcher", "Error fetching $url: ${e.message}")
                 lastError = e
                 attempt++
                 if (attempt < maxRetries) {
+                    ImageLoaderLogger.w(
+                        TAG,
+                        "Retry $attempt/$maxRetries: ${e.message}",
+                        category = LogCategory.NETWORK
+                    )
                     onRetry?.invoke(attempt, maxRetries, e)
                     val delayTime = retryDelayMillis * (1L shl (attempt - 1))
                     kotlinx.coroutines.delay(delayTime)
+                } else {
+                    ImageLoaderLogger.e(
+                        TAG,
+                        "Failed after $maxRetries retries",
+                        e,
+                        LogCategory.NETWORK
+                    )
                 }
             }
         }

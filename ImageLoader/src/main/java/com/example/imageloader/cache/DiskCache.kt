@@ -1,7 +1,8 @@
 package com.example.imageloader.cache
 
 import android.content.Context
-import android.util.Log
+import com.example.imageloader.logger.ImageLoaderLogger
+import com.example.imageloader.logger.LogCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,6 +16,9 @@ class DiskCache(
     private val maxSizeBytes: Long = 150L * 1000 * 1000, // 150MB
     private val logger: Logger = AndroidLogger
 ) {
+    companion object {
+        private const val TAG = "DiskCache"
+    }
     private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -60,12 +64,10 @@ class DiskCache(
 
         // Use cached size instead of scanning all files
         if (currentSize + estimatedSize > maxSizeBytes) {
-            logger.wtf(
-                "DiskCache",
-                "Trim cache needed: current=$currentSize, estimated=$estimatedSize, max=$maxSizeBytes"
-            )
+            val requiredFree = (currentSize + estimatedSize) - maxSizeBytes
+            ImageLoaderLogger.w(TAG, "Cache full, trimming ${requiredFree / 1000}KB", category = LogCategory.CACHE)
             // Trim asynchronously to avoid blocking
-            trimCacheAsync((currentSize + estimatedSize) - maxSizeBytes)
+            trimCacheAsync(requiredFree)
         }
 
         val tempFile = File(cacheDir, "${file.name}.tmp")
@@ -93,7 +95,6 @@ class DiskCache(
         ioScope.launch {
             val total = cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
             currentSize = total
-            Log.d("DiskCache", "Initial cache size: $currentSize bytes")
         }
     }
 
@@ -108,8 +109,8 @@ class DiskCache(
     private fun trimCacheAsync(requiredFree: Long) {
         ioScope.launch {
             synchronized(this@DiskCache) {
-                logger.wtf("DiskCache", "trimCache async: $requiredFree")
                 var freed = 0L
+                var filesDeleted = 0
                 cacheDir.listFiles()
                     ?.sortedBy { it.lastModified() }
                     ?.forEach {
@@ -118,12 +119,12 @@ class DiskCache(
                         if (it.delete()) {
                             freed += size
                             currentSize -= size
+                            filesDeleted++
                         }
                     }
-                logger.wtf(
-                    "DiskCache",
-                    "trimCache completed: freed=$freed, currentSize=$currentSize"
-                )
+                if (filesDeleted > 0) {
+                    ImageLoaderLogger.i(TAG, "Trimmed cache: deleted $filesDeleted files, freed ${freed / 1000}KB", LogCategory.CACHE)
+                }
             }
         }
     }
@@ -144,7 +145,7 @@ class DiskCache(
 
     object AndroidLogger : Logger {
         override fun wtf(tag: String, msg: String) {
-            Log.wtf(tag, msg)
+            android.util.Log.wtf(tag, msg)
         }
     }
 }

@@ -2,7 +2,8 @@ package com.example.myimageloaderproject.modules.home.data.cache
 
 import android.content.Context
 import android.os.Environment
-import android.util.Log
+import com.example.imageloader.logger.ImageLoaderLogger
+import com.example.imageloader.logger.LogCategory
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -18,6 +19,10 @@ data class PhotoBackup(
 
 class JsonBackupManager(private val context: Context) {
     private val gson = Gson()
+    
+    companion object {
+        private const val TAG = "JsonBackupManager"
+    }
     
     private val backupFile: File
         get() {
@@ -38,9 +43,10 @@ class JsonBackupManager(private val context: Context) {
                 )
                 val json = gson.toJson(backup)
                 backupFile.writeText(json)
-                Log.d("JsonBackupManager", "Backup saved: ${photos.size} photos, page $currentPage, to: ${backupFile.absolutePath}")
+                ImageLoaderLogger.jsonPhotoCount = photos.size
+                ImageLoaderLogger.i(TAG, "JSON backup saved: ${photos.size} photos, page $currentPage", LogCategory.CACHE)
             } catch (e: Exception) {
-                Log.e("JsonBackupManager", "Failed to save backup", e)
+                ImageLoaderLogger.e(TAG, "Failed to save JSON backup", e, LogCategory.CACHE)
                 e.printStackTrace()
             }
         }
@@ -50,7 +56,6 @@ class JsonBackupManager(private val context: Context) {
         return withContext(Dispatchers.IO) {
             try {
                 if (!backupFile.exists()) {
-                    Log.d("JsonBackupManager", "No backup file found")
                     return@withContext null
                 }
                 
@@ -60,15 +65,16 @@ class JsonBackupManager(private val context: Context) {
                 
                 val oneDayAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
                 if (backup.timestamp < oneDayAgo) {
-                    Log.d("JsonBackupManager", "Backup expired, deleting")
+                    ImageLoaderLogger.i(TAG, "JSON backup expired, deleting", LogCategory.CACHE)
                     backupFile.delete()
                     return@withContext null
                 }
                 
-                Log.d("JsonBackupManager", "Backup loaded: ${backup.photos.size} photos, page ${backup.currentPage}, from: ${backupFile.absolutePath}")
+                ImageLoaderLogger.jsonPhotoCount = backup.photos.size
+                ImageLoaderLogger.i(TAG, "JSON backup loaded: ${backup.photos.size} photos, page ${backup.currentPage}", LogCategory.CACHE)
                 backup
             } catch (e: Exception) {
-                Log.e("JsonBackupManager", "Failed to load backup", e)
+                ImageLoaderLogger.e(TAG, "Failed to load JSON backup", e, LogCategory.CACHE)
                 e.printStackTrace()
                 backupFile.delete()
                 null

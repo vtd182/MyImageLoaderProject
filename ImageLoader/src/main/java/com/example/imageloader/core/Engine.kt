@@ -1,12 +1,15 @@
 package com.example.imageloader.core
 
-import android.util.Log
 import com.example.imageloader.cache.ActiveResources
 import com.example.imageloader.cache.DiskCache
 import com.example.imageloader.cache.MemoryCache
 import com.example.imageloader.core.abstract.BitmapPool
 import com.example.imageloader.decode.BitmapDecoder
 import com.example.imageloader.fetcher.DataFetcher
+import com.example.imageloader.logger.ImageLoadLog
+import com.example.imageloader.logger.ImageLoaderLogger
+import com.example.imageloader.logger.LogCategory
+import com.example.imageloader.logger.LogSource
 import com.example.imageloader.target.Target
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -56,9 +59,7 @@ class Engine(
             val bitmap = resource.getBitmap()
             if (!bitmap.isRecycled) {
                 memoryCache.put(key, bitmap)
-                Log.d(TAG, "Resource released -> moved to memoryCache: $key")
             } else {
-                Log.w(TAG, "Resource released but bitmap already recycled, skip caching: $key")
                 memoryCache.remove(key)
             }
         }
@@ -113,11 +114,20 @@ class Engine(
 
     fun checkMemoryCache(req: Request, target: Target): Boolean {
         val key = buildKey(req)
+        val startTime = System.currentTimeMillis()
 
         // 1️⃣ Active Resources
         activeResources.get(key)?.let { resource ->
             if (!resource.isReleased() && !resource.getBitmap().isRecycled) {
                 target.onResourceReady(resource)
+
+                ImageLoaderLogger.log(
+                    ImageLoadLog(
+                        url = req.url,
+                        source = LogSource.ACTIVE_CACHE,
+                        totalTimeMs = System.currentTimeMillis() - startTime
+                    )
+                )
                 return true
             } else {
                 activeResources.remove(key)
@@ -130,6 +140,14 @@ class Engine(
                 val res = EngineResource(key, bitmap, activeResources)
                 activeResources.put(key, res)
                 target.onResourceReady(res)
+
+                ImageLoaderLogger.log(
+                    ImageLoadLog(
+                        url = req.url,
+                        source = LogSource.MEMORY_CACHE,
+                        totalTimeMs = System.currentTimeMillis() - startTime
+                    )
+                )
                 return true
             } else {
                 memoryCache.remove(key)
@@ -171,86 +189,20 @@ class Engine(
 
         // 3️⃣ Disk Cache (raw bytes) → decode + transform lại
         diskCache.get(dataKey)?.let { bytes ->
-            Log.d(TAG, "[DiskCache] Found cached data: $key")
             try {
                 // 🕐 Decode (skip if fast scrolling and low quality is acceptable)
                 val decodeStart = System.currentTimeMillis()
                 var bitmap =
                     if (isFastScrolling && req.resizeWidth != null && req.resizeHeight != null) {
-                        Log.d(TAG, "[FastScroll] Using downscaled decode for: $key")
                         BitmapDecoder.decode(bytes, req.resizeWidth * 2, req.resizeHeight * 2)
                     } else {
                         BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
                     }
-                Log.d(TAG, "[Decode from Disk] ${System.currentTimeMillis() - decodeStart}ms")
-
+                val decodeTime = System.currentTimeMillis() - decodeStart
+                
                 // 🕐 Transform lại (nếu có) - skip during fast scroll for better performance
-                if (req.transformations.isNotEmpty()) {
-                    if (isFastScrolling) {
-                        Log.d(TAG, "[FastScroll] Skipping transformations for: $key")
-                    } else {
-                        val t = measureTimeMillis {
-                            bitmap = withContext(Dispatchers.Default) {
-                                req.transformations.fold(bitmap) { bmp, transform ->
-                                    transform.transform(
-                                        bitmapPool,
-                                        bmp,
-                                        req.outWidth ?: req.resizeWidth ?: bmp.width,
-                                        req.outHeight ?: req.resizeHeight ?: bmp.height
-                                    )
-                                }
-                            }
-                        }
-                        Log.d(
-                            TAG,
-                            "[Transform from Disk] $t ms (${req.transformations.size} transforms)"
-                        )
-                    }
-                }
-
-                val res = EngineResource(key, bitmap, activeResources)
-                activeResources.put(key, res)
-
-                withContext(Dispatchers.Main) {
-                    target.onResourceReady(res)
-                }
-                Log.d(
-                    TAG,
-                    "[DiskCache] Completed in ${System.currentTimeMillis() - startTime}ms -> $key"
-                )
-                return
-            } catch (e: Exception) {
-                Log.e(TAG, "Disk decode/transform failed: $key", e)
-            }
-        }
-
-        // 4️⃣ Network fetch + decode + transform
-        Log.d(TAG, "Miss cache -> fetch from network: $key")
-        try {
-            // 🕐 Fetch
-            val fetchStart = System.currentTimeMillis()
-            val result = fetcher.fetch(req.url)
-            val bytes = result.bytes
-            val contentType = result.contentType
-            val fetchElapsed = System.currentTimeMillis() - fetchStart
-            Log.d(TAG, "[Fetch] ${fetchElapsed}ms")
-
-            // 🕐 Decode (optimized for fast scroll)
-            val decodeStart = System.currentTimeMillis()
-            var bitmap =
-                if (isFastScrolling && req.resizeWidth != null && req.resizeHeight != null) {
-                    Log.d(TAG, "[FastScroll] Using downscaled decode for: $key")
-                    BitmapDecoder.decode(bytes, req.resizeWidth * 2, req.resizeHeight * 2)
-                } else {
-                    BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
-                }
-            Log.d(TAG, "[Decode] ${System.currentTimeMillis() - decodeStart}ms")
-
-            // 🕐 Transform (skip during fast scroll)
-            if (req.transformations.isNotEmpty()) {
-                if (isFastScrolling) {
-                    Log.d(TAG, "[FastScroll] Skipping transformations for: $key")
-                } else {
+                var transformTime: Long? = null
+                if (req.transformations.isNotEmpty() && !isFastScrolling) {
                     val t = measureTimeMillis {
                         bitmap = withContext(Dispatchers.Default) {
                             req.transformations.fold(bitmap) { bmp, transform ->
@@ -263,15 +215,76 @@ class Engine(
                             }
                         }
                     }
-                    Log.d(TAG, "[Transform] $t ms (${req.transformations.size} transforms)")
+                    transformTime = t
                 }
+
+                val res = EngineResource(key, bitmap, activeResources)
+                activeResources.put(key, res)
+
+                withContext(Dispatchers.Main) {
+                    target.onResourceReady(res)
+                }
+
+                val totalTime = System.currentTimeMillis() - startTime
+
+                ImageLoaderLogger.log(
+                    ImageLoadLog(
+                        url = req.url,
+                        source = LogSource.DISK_CACHE,
+                        decodeTimeMs = decodeTime,
+                        transformTimeMs = transformTime,
+                        totalTimeMs = totalTime,
+                        transformCount = req.transformations.size,
+                        isFastScrolling = isFastScrolling
+                    )
+                )
+                return
+            } catch (e: Exception) {
+                ImageLoaderLogger.e(TAG, "Disk cache decode failed for: ${req.url}", e, LogCategory.CACHE)
+            }
+        }
+
+        // 4️⃣ Network fetch + decode + transform
+        try {
+            // 🕐 Fetch
+            val fetchStart = System.currentTimeMillis()
+            val result = fetcher.fetch(req.url)
+            val bytes = result.bytes
+            val contentType = result.contentType
+            val fetchElapsed = System.currentTimeMillis() - fetchStart
+
+            // 🕐 Decode (optimized for fast scroll)
+            val decodeStart = System.currentTimeMillis()
+            var bitmap =
+                if (isFastScrolling && req.resizeWidth != null && req.resizeHeight != null) {
+                    BitmapDecoder.decode(bytes, req.resizeWidth * 2, req.resizeHeight * 2)
+                } else {
+                    BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
+                }
+            val decodeTime = System.currentTimeMillis() - decodeStart
+
+            // 🕐 Transform (skip during fast scroll)
+            var transformTime: Long? = null
+            if (req.transformations.isNotEmpty() && !isFastScrolling) {
+                val t = measureTimeMillis {
+                    bitmap = withContext(Dispatchers.Default) {
+                        req.transformations.fold(bitmap) { bmp, transform ->
+                            transform.transform(
+                                bitmapPool,
+                                bmp,
+                                req.outWidth ?: req.resizeWidth ?: bmp.width,
+                                req.outHeight ?: req.resizeHeight ?: bmp.height
+                            )
+                        }
+                    }
+                }
+                transformTime = t
             }
 
             // 🕐 Cache
             val cacheTime = measureTimeMillis {
                 if (req.useDiskCache) diskCache.put(dataKey, bytes, contentType)
             }
-            Log.d(TAG, "[Cache write] $cacheTime ms")
 
             // 🕐 Wrap & Deliver
             val res = EngineResource(key, bitmap, activeResources)
@@ -280,12 +293,37 @@ class Engine(
             withContext(Dispatchers.Main) {
                 target.onResourceReady(res)
             }
-            Log.d(TAG, "[Network] Completed in ${System.currentTimeMillis() - startTime}ms -> $key")
+
+            val totalTime = System.currentTimeMillis() - startTime
+
+            ImageLoaderLogger.log(
+                ImageLoadLog(
+                    url = req.url,
+                    source = LogSource.NETWORK,
+                    fetchTimeMs = fetchElapsed,
+                    decodeTimeMs = decodeTime,
+                    transformTimeMs = transformTime,
+                    cacheWriteTimeMs = cacheTime,
+                    totalTimeMs = totalTime,
+                    transformCount = req.transformations.size,
+                    isFastScrolling = isFastScrolling
+                )
+            )
         } catch (e: Exception) {
             when (e) {
-                is CancellationException -> Log.d(TAG, "Cancelled loading: $key")
+                is CancellationException -> {
+                    // Silently ignore cancellations
+                }
                 else -> {
-                    Log.e(TAG, "Load failed: $key", e)
+                    ImageLoaderLogger.log(
+                        ImageLoadLog(
+                            url = req.url,
+                            source = LogSource.NETWORK,
+                            totalTimeMs = System.currentTimeMillis() - startTime,
+                            error = e.message ?: e.javaClass.simpleName
+                        )
+                    )
+
                     withContext(Dispatchers.Main) {
                         target.onLoadFailed {
                             engineScope.launch {

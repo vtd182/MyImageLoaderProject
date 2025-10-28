@@ -1,7 +1,6 @@
 package com.example.imageloader.core
 
 import android.graphics.Bitmap
-import android.util.Log
 import com.example.imageloader.core.abstract.BitmapPool
 
 class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
@@ -76,7 +75,6 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
         }
         map.clear()
         currentSize = 0L
-        Log.d("BitmapPool", "Pool cleared")
     }
 
     @Synchronized
@@ -117,10 +115,7 @@ class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
         }
     }
 
-    fun dumpStats(tag: String = "BitmapPool") {
-        Log.d(
-            tag,
-            "hits=$hits, misses=$misses, puts=$puts, evictions=$evictions, size=$currentSize/$maxSizeBytes"
-        )
+    fun dumpStats(): String {
+        return "hits=$hits, misses=$misses, puts=$puts, evictions=$evictions, size=$currentSize/$maxSizeBytes"
     }
 }

@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.example.imageloader.core.RequestManager
+import com.example.imageloader.logger.LogViewer
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.core.customView.FPSOverlay
 import com.example.myimageloaderproject.core.error.AppError
@@ -49,6 +50,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var footerLoading: View
     private lateinit var networkStatusBar: LinearLayout
     private lateinit var networkStatusText: TextView
+    private lateinit var tvTitle: TextView
 
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     private var spanCount = 2
@@ -56,6 +58,10 @@ class HomeActivity : AppCompatActivity() {
 
     private lateinit var networkMonitor: NetworkMonitor
     private var wasOffline = false
+    
+    private var tapCount = 0
+    private var lastTapTime = 0L
+    private val TAP_TIMEOUT = 500L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,8 +77,26 @@ class HomeActivity : AppCompatActivity() {
         footerLoading = findViewById(R.id.footerLoading)
         networkStatusBar = findViewById(R.id.networkStatusBar)
         networkStatusText = networkStatusBar.findViewById(R.id.networkStatusText)
+        tvTitle = findViewById(R.id.tvTitleHome)
 
         networkMonitor = NetworkMonitor(this)
+
+        tvTitle.setOnClickListener {
+            val currentTime = System.currentTimeMillis()
+
+            if (currentTime - lastTapTime > TAP_TIMEOUT) {
+                tapCount = 0
+            }
+
+            tapCount++
+            lastTapTime = currentTime
+
+            if (tapCount == 5) {
+                tapCount = 0
+                LogViewer.open(this@HomeActivity)
+                Toast.makeText(this@HomeActivity, "Opening Logger", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         adapter = PhotoAdapter { spanCount }
 

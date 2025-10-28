@@ -1,7 +1,6 @@
 package com.example.imageloader.cache
 
 import android.graphics.Bitmap
-import android.util.Log
 import android.util.LruCache
 import com.example.imageloader.core.abstract.BitmapPool
 
@@ -19,7 +18,6 @@ class MemoryCache(
             newValue: Bitmap?
         ) {
             if (evicted && oldValue != null && oldValue.isMutable && !oldValue.isRecycled) {
-                Log.d("MemoryCache", "Evicted from cache → move to pool: $key")
                 bitmapPool?.put(oldValue)
             }
         }
@@ -29,7 +27,6 @@ class MemoryCache(
 
     fun put(key: String, bitmap: Bitmap): Bitmap? {
         if (bitmap.isRecycled) {
-            Log.w("MemoryCache", "Attempted to cache a recycled bitmap: $key")
             return null
         }
         return cache.put(key, bitmap)
@@ -38,7 +35,6 @@ class MemoryCache(
     fun remove(key: String): Bitmap? = cache.remove(key)
 
     fun clear() {
-        Log.d("MemoryCache", "Clearing memory cache")
         cache.evictAll()
     }
 

@@ -14,6 +14,8 @@ import androidx.core.view.doOnAttach
 import androidx.core.view.doOnDetach
 import com.example.imageloader.core.EngineResource
 import com.example.imageloader.drawable.ShimmerDrawable
+import com.example.imageloader.logger.ImageLoaderLogger
+import com.example.imageloader.logger.LogCategory
 
 
 class ImageViewTarget(
@@ -29,6 +31,7 @@ class ImageViewTarget(
     private var shimmerDrawable: ShimmerDrawable? = null
 
     companion object {
+        private const val TAG = "ImageViewTarget"
         private const val LOADING_DELAY_MS = 500L
     }
 
@@ -65,7 +68,7 @@ class ImageViewTarget(
 
         val bitmap = engineResource.getBitmap()
         if (bitmap.isRecycled) {
-            android.util.Log.w("ImageViewTarget", "⚠️ Bitmap already recycled")
+            ImageLoaderLogger.w(TAG, "Bitmap already recycled", category = LogCategory.ENGINE)
             return
         }
 
@@ -73,7 +76,7 @@ class ImageViewTarget(
             imageView.setImageBitmap(bitmap)
             imageView.setOnClickListener(null)
         } catch (e: Exception) {
-            android.util.Log.e("ImageViewTarget", "❌ Failed to set bitmap", e)
+            ImageLoaderLogger.e(TAG, "Failed to set bitmap", e, LogCategory.ENGINE)
         }
 
 
@@ -138,7 +141,6 @@ class ImageViewTarget(
 
     private fun showShimmer() {
         val currentDrawable = imageView.drawable
-        android.util.Log.d("ImageViewTarget", "showShimmer - currentDrawable: $currentDrawable")
 
         // Extract color from placeholder drawable
         val placeholderColor = if (currentDrawable is android.graphics.drawable.GradientDrawable) {
@@ -161,13 +163,8 @@ class ImageViewTarget(
             val layers = arrayOf(currentDrawable, shimmerDrawable!!)
             val layerDrawable = LayerDrawable(layers)
             imageView.setImageDrawable(layerDrawable)
-            android.util.Log.d(
-                "ImageViewTarget",
-                "Shimmer layer applied over placeholder with color: $placeholderColor"
-            )
         } else {
             imageView.setImageDrawable(shimmerDrawable)
-            android.util.Log.d("ImageViewTarget", "Shimmer drawable applied alone")
         }
 
         shimmerDrawable?.start()

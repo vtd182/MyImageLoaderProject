@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="8dp"
+    app:cardBackgroundColor="#1E1E1E"
+    app:cardCornerRadius="4dp"
+    app:cardElevation="2dp">
+
+    <TextView
+        android:id="@+id/txtLog"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp"
+        android:textSize="11sp"
+        android:textColor="#E0E0E0"
+        android:fontFamily="monospace"
+        android:text="[12:34:56.789] ✅ NETWORK | Total: 245ms | Fetch: 120ms | Decode: 80ms\n   URL: https://example.com/image.jpg" />
+
+</androidx.cardview.widget.CardView>

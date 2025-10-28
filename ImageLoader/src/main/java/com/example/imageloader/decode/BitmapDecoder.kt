@@ -2,7 +2,6 @@ package com.example.imageloader.decode
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Log
 import androidx.palette.graphics.Palette
 import com.example.imageloader.core.abstract.BitmapPool
 
@@ -16,7 +15,6 @@ object BitmapDecoder {
     
     fun setUseBitmapPool(enabled: Boolean) {
         useBitmapPool = enabled
-        Log.d("BitmapDecoder", "BitmapPool for decode: ${if (enabled) "ENABLED" else "DISABLED"}")
     }
     
     fun decode(bytes: ByteArray, reqW: Int, reqH: Int): Bitmap {
@@ -35,7 +33,6 @@ object BitmapDecoder {
             if (useBitmapPool) {
                 bitmapPool?.get(decodedWidth, decodedHeight, Bitmap.Config.ARGB_8888)?.let { poolBitmap ->
                     inBitmap = poolBitmap
-                    Log.d("BitmapDecoder", "Reusing bitmap from pool for decode: ${decodedWidth}x${decodedHeight}")
                 }
             }
         }
@@ -44,7 +41,6 @@ object BitmapDecoder {
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
         } catch (e: IllegalArgumentException) {
             // inBitmap failed, retry without it
-            Log.w("BitmapDecoder", "Failed to reuse bitmap, decoding without pool")
             opts.inBitmap = null
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
         } ?: throw IllegalStateException("Decode returned null")
