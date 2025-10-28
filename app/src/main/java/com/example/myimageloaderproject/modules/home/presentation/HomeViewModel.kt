@@ -145,24 +145,24 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 
                 val newPhotos = getRandomPhotosUseCase(perPage, 1)
                 currentPage = 1
-                _uiState.value = HomeUiState.Data(newPhotos)
                 
-                photoPreloader.preloadPages(currentPage)
-                
+                // Only save backup after successful fetch
                 backupManager.saveBackup(newPhotos, currentPage)
+                
+                _uiState.value = HomeUiState.Data(newPhotos)
+                photoPreloader.preloadPages(currentPage)
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "Failed to refresh", e)
                 val error = ErrorHandler.handleError(e)
                 val isOffline = !networkMonitor.isNetworkAvailable()
                 
-                // Nếu đang refresh và có data, giữ nguyên data và chỉ show error
+                // Keep existing data and show error, don't overwrite backup
                 if (current is HomeUiState.Data) {
                     _uiState.value = current.copy(
                         isRefreshing = false,
                         error = error
                     )
                 } else {
-                    // Nếu chưa có data, show error screen
                     _uiState.value = HomeUiState.InitError(
                         error = error,
                         isOffline = isOffline,

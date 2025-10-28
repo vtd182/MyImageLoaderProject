@@ -78,6 +78,13 @@ class RequestBuilder(
         applyPlaceholder(imageView)
         val reload = { into(imageView) }
 
+        // Check memory cache first (sync)
+        if (engine.checkMemoryCache(request, target)) {
+            RequestManager.track(imageView, null)
+            return
+        }
+
+        // Miss cache -> check if paused
         val job = if (!RequestManager.isPaused()) {
             engine.load(request, target)
         } else null

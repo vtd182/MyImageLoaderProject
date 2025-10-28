@@ -111,33 +111,15 @@ class Engine(
         }
     }
 
-    fun load(
-        req: Request,
-        target: Target,
-        priority: RequestPriority = RequestPriority.NORMAL
-    ): Job {
+    fun checkMemoryCache(req: Request, target: Target): Boolean {
         val key = buildKey(req)
-        val dataKey = buildDataKey(req) // key for disk cache, without transformations
-        val startTime = System.currentTimeMillis()
-
-        fun logDuration(stage: String) {
-            val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "[$stage] Completed in ${elapsed}ms -> $key")
-        }
 
         // 1️⃣ Active Resources
         activeResources.get(key)?.let { resource ->
-            // Check if resource is still valid (not released and bitmap not recycled)
             if (!resource.isReleased() && !resource.getBitmap().isRecycled) {
-                logDuration("ActiveResource")
                 target.onResourceReady(resource)
-                return Job().apply { complete() }
+                return true
             } else {
-                // Remove stale resource from active cache
-                Log.w(
-                    TAG,
-                    "Found invalid resource in active cache, removing: $key (released=${resource.isReleased()}, recycled=${resource.getBitmap().isRecycled})"
-                )
                 activeResources.remove(key)
             }
         }
@@ -145,24 +127,29 @@ class Engine(
         // 2️⃣ Memory Cache
         memoryCache.get(key)?.let { bitmap ->
             if (!bitmap.isRecycled) {
-                logDuration("MemoryCache")
                 val res = EngineResource(key, bitmap, activeResources)
                 activeResources.put(key, res)
                 target.onResourceReady(res)
-                return Job().apply { complete() }
+                return true
             } else {
-                // Remove recycled bitmap from cache
-                Log.w(TAG, "Found recycled bitmap in memory cache, removing: $key")
                 memoryCache.remove(key)
             }
         }
 
+        return false
+    }
+
+    fun load(
+        req: Request,
+        target: Target,
+        priority: RequestPriority = RequestPriority.NORMAL
+    ): Job {
         // 3️⃣ Disk Cache or Network - use priority queue
         // Notify target that loading has started
         engineScope.launch(Dispatchers.Main) {
             target.onLoadStarted()
         }
-        
+
         val job = Job()
         val prioritizedReq = PrioritizedRequest(req, target, priority, job)
 
