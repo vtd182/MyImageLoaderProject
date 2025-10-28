@@ -8,7 +8,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Filter by Category"
+        android:text="@string/imageloader_filter_by_category"
         android:textSize="18sp"
         android:textStyle="bold"
         android:textColor="#212121"
@@ -30,7 +30,7 @@
             android:id="@+id/btnSelectAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Select All"
+            android:text="@string/imageloader_select_all"
             android:textSize="12sp"
             style="@style/Widget.MaterialComponents.Button.TextButton" />
 
@@ -38,7 +38,7 @@
             android:id="@+id/btnApply"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Apply"
+            android:text="@string/imageloader_apply"
             android:textSize="12sp"
             android:layout_marginStart="8dp" />
 

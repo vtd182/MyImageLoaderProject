@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Log Viewer Activity -->
+    <string name="imageloader_log_viewer_title">Image Loader Logs</string>
+    <string name="imageloader_total_label">Total:</string>
+    <string name="imageloader_quick_stats_placeholder">0 logs | Mem: 0 | Disk: 0 | Net: 0 | Err: 0</string>
+
+    <!-- Content Descriptions -->
+    <string name="imageloader_back">Back</string>
+    <string name="imageloader_view_stats">View Stats</string>
+    <string name="imageloader_filter">Filter</string>
+    <string name="imageloader_clear_logs">Clear Logs</string>
+
+    <!-- Stats Dialog -->
+    <string name="imageloader_performance_stats">Performance Statistics</string>
+    <string name="imageloader_summary">Summary</string>
+    <string name="imageloader_summary_placeholder">Total: 0 logs | Images: 0 | Errors: 0 | JSON: 0 photos</string>
+    <string name="imageloader_memory_cache_title">💚 Memory Cache (Active + Memory)</string>
+    <string name="imageloader_memory_stats_placeholder">Count: 0 images\nAvg Time: 0.0ms (instant)</string>
+    <string name="imageloader_disk_cache_title">🟠 Disk Cache</string>
+    <string name="imageloader_disk_stats_placeholder">Count: 0 images\nAvg Time: 0.0ms | Decode: 0.0ms | Transform: 0.0ms</string>
+    <string name="imageloader_network_title">🔴 Network</string>
+    <string name="imageloader_network_stats_placeholder">Count: 0 images\nAvg Time: 0.0ms | Fetch: 0.0ms | Decode: 0.0ms | Transform: 0.0ms</string>
+    <string name="imageloader_close">Close</string>
+
+    <!-- Filter Dialog -->
+    <string name="imageloader_filter_by_category">Filter by Category</string>
+    <string name="imageloader_select_all">Select All</string>
+    <string name="imageloader_apply">Apply</string>
+
+    <!-- Clear Dialog -->
+    <string name="imageloader_clear_title">Clear Logs</string>
+    <string name="imageloader_clear_message">Are you sure you want to clear all logs?</string>
+    <string name="imageloader_clear">Clear</string>
+    <string name="imageloader_cancel">Cancel</string>
+
+    <!-- Log Item -->
+    <string name="imageloader_view_image">View Image</string>
+    <string name="imageloader_fast_scroll_icon">⚡</string>
+    <string name="imageloader_default_stats">0 logs | Mem: 0 | Disk: 0 | Net: 0 | Err: 0</string>
+</resources>

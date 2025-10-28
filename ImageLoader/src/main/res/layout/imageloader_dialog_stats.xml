@@ -13,7 +13,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Performance Statistics"
+            android:text="@string/imageloader_performance_stats"
             android:textSize="18sp"
             android:textStyle="bold"
             android:textColor="#212121"
@@ -22,7 +22,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Summary"
+            android:text="@string/imageloader_summary"
             android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="#424242"

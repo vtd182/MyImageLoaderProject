@@ -33,19 +33,11 @@
                 android:fontFamily="monospace" />
 
             <TextView
-                android:id="@+id/txtLogIcon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="✅"
-                android:layout_marginStart="8dp"
-                android:textSize="14sp" />
-
-            <TextView
                 android:id="@+id/txtLogSource"
                 android:layout_width="0dp"
                 android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:text="DISK_CACHE"
+                android:text="DISK CACHE"
                 android:textSize="12sp"
                 android:textColor="#424242"
                 android:textStyle="bold"
@@ -115,7 +107,7 @@
             android:id="@+id/btnOpenUrl"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="View Image"
+            android:text="@string/imageloader_view_image"
             android:textSize="11sp"
             android:layout_marginTop="8dp"
             android:visibility="gone"

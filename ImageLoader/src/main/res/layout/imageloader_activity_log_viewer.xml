@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#F5F5F5"
@@ -20,11 +21,21 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
+            <ImageView
+                android:id="@+id/btnBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/imageloader_back"
+                android:padding="8dp"
+                android:src="@android:drawable/ic_menu_revert"
+                app:tint="#212121" />
+
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Image Loader Logs"
+                android:text="@string/imageloader_log_viewer_title"
                 android:textColor="#212121"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -34,27 +45,30 @@
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="View Stats"
+                android:contentDescription="@string/imageloader_view_stats"
                 android:padding="8dp"
-                android:src="@android:drawable/ic_menu_info_details" />
+                android:src="@android:drawable/ic_menu_info_details"
+                app:tint="#212121" />
 
             <ImageView
                 android:id="@+id/btnFilter"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Filter"
+                android:contentDescription="@string/imageloader_filter"
                 android:padding="8dp"
-                android:src="@android:drawable/ic_menu_sort_by_size" />
+                android:src="@android:drawable/ic_menu_sort_by_size"
+                app:tint="#212121" />
 
             <ImageView
                 android:id="@+id/btnClear"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Clear Logs"
+                android:contentDescription="@string/imageloader_clear_logs"
                 android:padding="8dp"
-                android:src="@android:drawable/ic_menu_delete" />
+                android:src="@android:drawable/ic_menu_delete"
+                app:tint="#212121" />
 
         </LinearLayout>
 
@@ -68,7 +82,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Total:"
+                android:text="@string/imageloader_total_label"
                 android:textColor="#757575"
                 android:textSize="11sp" />
 
@@ -77,7 +91,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="monospace"
-                android:text="0 logs | Mem: 0 | Disk: 0 | Net: 0 | Err: 0"
+                android:text="@string/imageloader_default_stats"
                 android:textColor="#424242"
                 android:textSize="11sp" />
 
