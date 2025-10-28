@@ -91,19 +91,6 @@ object RequestManager {
     }
 
     @Synchronized
-    fun resumeAll() {
-        resumeJob?.cancel()
-        resumeJob = scope.launch {
-            delay(DEBOUNCE_DELAY)
-            isPaused = false
-            startFpsMonitor()
-            val copy = pending.toMap()
-            pending.clear()
-            copy.values.forEach { it.invoke() }
-        }
-    }
-
-    @Synchronized
     fun resumeVisibleOnly(visibleViews: List<ImageView>) {
         if (pending.isEmpty()) {
             isPaused = false

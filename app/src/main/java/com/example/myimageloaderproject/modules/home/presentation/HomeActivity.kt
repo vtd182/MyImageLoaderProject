@@ -1,12 +1,14 @@
 package com.example.myimageloaderproject.modules.home.presentation
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AnimationUtils
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -389,10 +391,15 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun addFpsOverlay() {
-        val rootView = findViewById<ViewGroup>(android.R.id.content)
+        val rootView = window.decorView as ViewGroup
         val fpsOverlay = FPSOverlay(this)
-        val size = resources.displayMetrics.density * 48
-        val params = ViewGroup.LayoutParams(size.toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        val size = resources.displayMetrics.density * 48 * 2
+        val params = FrameLayout.LayoutParams(size.toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        params.gravity = Gravity.TOP or Gravity.END
+        val statusBarHeight = resources.getDimensionPixelSize(
+            resources.getIdentifier("status_bar_height", "dimen", "android")
+        )
+        params.topMargin = statusBarHeight
         fpsOverlay.layoutParams = params
         rootView.addView(fpsOverlay)
     }
