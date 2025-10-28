@@ -141,32 +141,30 @@ class ImageViewTarget(
 
     private fun showShimmer() {
         val currentDrawable = imageView.drawable
+        
+        if (currentDrawable == null || currentDrawable is ShimmerDrawable) {
+            return
+        }
 
-        // Extract color from placeholder drawable
-        val placeholderColor = if (currentDrawable is android.graphics.drawable.GradientDrawable) {
+        var cornerRadius = 0f
+        var placeholderColor: Int? = null
+        
+        if (currentDrawable is android.graphics.drawable.GradientDrawable) {
             try {
-                // Try to get color from GradientDrawable
+                val radii = currentDrawable.cornerRadii
+                cornerRadius = radii?.get(0) ?: currentDrawable.cornerRadius
+                
                 val colorState = currentDrawable.color
-                colorState?.defaultColor
+                placeholderColor = colorState?.defaultColor
             } catch (e: Exception) {
-                null
+                // Ignore
             }
-        } else {
-            null
         }
 
-        if (shimmerDrawable == null) {
-            shimmerDrawable = ShimmerDrawable(placeholderColor)
-        }
-
-        if (currentDrawable != null && currentDrawable !is ShimmerDrawable) {
-            val layers = arrayOf(currentDrawable, shimmerDrawable!!)
-            val layerDrawable = LayerDrawable(layers)
-            imageView.setImageDrawable(layerDrawable)
-        } else {
-            imageView.setImageDrawable(shimmerDrawable)
-        }
-
+        shimmerDrawable = ShimmerDrawable(placeholderColor, cornerRadius)
+        val layers = arrayOf(currentDrawable, shimmerDrawable!!)
+        val layerDrawable = LayerDrawable(layers)
+        imageView.setImageDrawable(layerDrawable)
         shimmerDrawable?.start()
     }
 

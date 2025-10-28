@@ -7,15 +7,19 @@ import android.graphics.ColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 
-class ShimmerDrawable(baseColor: Int? = null) : Drawable() {
-    private val paint = Paint()
+class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 0f) : Drawable() {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val matrix = Matrix()
     private var animator: ValueAnimator? = null
     private var translateX = 0f
+    private val path = Path()
+    private val rectF = RectF()
     
     private val shimmerColors: IntArray = if (baseColor != null) {
         val lighter = lightenColor(baseColor, 0.2f)
@@ -81,7 +85,14 @@ class ShimmerDrawable(baseColor: Int? = null) : Drawable() {
         matrix.setTranslate(-width + translateX * width * 2, 0f)
         paint.shader?.setLocalMatrix(matrix)
         
-        canvas.drawRect(bounds, paint)
+        if (cornerRadius > 0f) {
+            rectF.set(bounds)
+            path.reset()
+            path.addRoundRect(rectF, cornerRadius, cornerRadius, Path.Direction.CW)
+            canvas.drawPath(path, paint)
+        } else {
+            canvas.drawRect(bounds, paint)
+        }
     }
     
     override fun setAlpha(alpha: Int) {

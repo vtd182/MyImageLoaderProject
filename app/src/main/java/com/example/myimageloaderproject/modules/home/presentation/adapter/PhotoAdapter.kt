@@ -60,7 +60,7 @@ class PhotoAdapter(
             val ratio = 1
             val itemHeight = (itemWidth * ratio).toInt()
 
-            photo.urls.small?.let {
+            photo.urls.raw?.let {
                 val request = ImageLoader.with(imgPhoto.context)
                     .overrideSize(itemWidth, itemHeight)
                     .placeholder(photo.color)

@@ -58,7 +58,7 @@ class HomeActivity : AppCompatActivity() {
 
     private lateinit var networkMonitor: NetworkMonitor
     private var wasOffline = false
-    
+
     private var tapCount = 0
     private var lastTapTime = 0L
     private val TAP_TIMEOUT = 500L
@@ -144,23 +144,11 @@ class HomeActivity : AppCompatActivity() {
             private var lastScrollTime = 0L
             private var lastDy = 0
             private var isScrollingUp = false
-            private var consecutiveFastScrolls = 0
 
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(rv, dx, dy)
 
                 val currentTime = System.currentTimeMillis()
-                val timeDiff = currentTime - lastScrollTime
-                
-                if (kotlin.math.abs(dy) > 50 && timeDiff < 100) {
-                    consecutiveFastScrolls++
-                    if (consecutiveFastScrolls >= 2) {
-                        com.example.imageloader.core.ImageLoader.setFastScrolling(rv.context, true)
-                    }
-                } else {
-                    consecutiveFastScrolls = 0
-                }
-                
                 lastScrollTime = currentTime
                 lastDy = dy
                 isScrollingUp = dy < 0
@@ -180,15 +168,10 @@ class HomeActivity : AppCompatActivity() {
                 super.onScrollStateChanged(rv, newState)
                 when (newState) {
                     RecyclerView.SCROLL_STATE_SETTLING -> {
-                        if (!isScrollingUp) {
-                            RequestManager.pauseAll()
-                        }
+                        RequestManager.pauseAll()
                     }
 
                     RecyclerView.SCROLL_STATE_IDLE -> {
-                        com.example.imageloader.core.ImageLoader.setFastScrolling(rv.context, false)
-                        consecutiveFastScrolls = 0
-                        
                         val visibleViews = mutableListOf<ImageView>()
                         for (i in 0 until rv.childCount) {
                             val child = rv.getChildAt(i)
