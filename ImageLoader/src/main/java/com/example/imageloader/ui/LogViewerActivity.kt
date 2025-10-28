@@ -5,7 +5,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -16,20 +18,14 @@ import com.example.imageloader.logger.LogEntry
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class LogViewerActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
-    private lateinit var txtStatTotal: TextView
-    private lateinit var txtStatImages: TextView
-    private lateinit var txtStatCache: TextView
-    private lateinit var txtStatNetwork: TextView
-    private lateinit var txtStatErrors: TextView
-    private lateinit var txtStatJson: TextView
-    private lateinit var txtStatAvg: TextView
-    private lateinit var txtStatDecode: TextView
-    private lateinit var txtStatTransform: TextView
-    private lateinit var btnClear: Button
-    private lateinit var chipGroupFilter: ChipGroup
+    private lateinit var txtQuickStats: TextView
+    private lateinit var btnStats: ImageView
+    private lateinit var btnFilter: ImageView
+    private lateinit var btnClear: ImageView
     private lateinit var adapter: LogAdapter
     private val selectedCategories = mutableSetOf<LogCategory>()
     
@@ -37,7 +33,7 @@ class LogViewerActivity : AppCompatActivity() {
         runOnUiThread {
             adapter.addLog(log, selectedCategories)
             recyclerView.smoothScrollToPosition(0)
-            updateStats()
+            updateQuickStats()
         }
     }
 
@@ -46,53 +42,114 @@ class LogViewerActivity : AppCompatActivity() {
         setContentView(R.layout.imageloader_activity_log_viewer)
 
         recyclerView = findViewById(R.id.recyclerViewLogs)
-        txtStatTotal = findViewById(R.id.txtStatTotal)
-        txtStatImages = findViewById(R.id.txtStatImages)
-        txtStatCache = findViewById(R.id.txtStatCache)
-        txtStatNetwork = findViewById(R.id.txtStatNetwork)
-        txtStatErrors = findViewById(R.id.txtStatErrors)
-        txtStatJson = findViewById(R.id.txtStatJson)
-        txtStatAvg = findViewById(R.id.txtStatAvg)
-        txtStatDecode = findViewById(R.id.txtStatDecode)
-        txtStatTransform = findViewById(R.id.txtStatTransform)
-        btnClear = findViewById(R.id.btnClearLogs)
-        chipGroupFilter = findViewById(R.id.chipGroupFilter)
+        txtQuickStats = findViewById(R.id.txtQuickStats)
+        btnStats = findViewById(R.id.btnStats)
+        btnFilter = findViewById(R.id.btnFilter)
+        btnClear = findViewById(R.id.btnClear)
 
         adapter = LogAdapter()
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
 
-        setupFilterChips()
+        LogCategory.values().forEach { selectedCategories.add(it) }
         adapter.submitLogs(ImageLoaderLogger.getAllLogs().reversed(), selectedCategories)
 
+        btnStats.setOnClickListener { showStatsDialog() }
+        btnFilter.setOnClickListener { showFilterDialog() }
         btnClear.setOnClickListener {
-            ImageLoaderLogger.clear()
-            adapter.clearLogs()
-            updateStats()
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Clear Logs")
+                .setMessage("Are you sure you want to clear all logs?")
+                .setPositiveButton("Clear") { _, _ ->
+                    ImageLoaderLogger.clear()
+                    adapter.clearLogs()
+                    updateQuickStats()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
 
         ImageLoaderLogger.addListener(logListener)
-        updateStats()
+        updateQuickStats()
     }
     
-    private fun setupFilterChips() {
+    private fun showStatsDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.imageloader_dialog_stats, null)
+        val stats = ImageLoaderLogger.getLogStats()
+        
+        dialogView.findViewById<TextView>(R.id.txtDialogSummary).text = buildString {
+            append("Total: ${stats.totalLogs} logs | Images: ${stats.totalImageRequests}")
+            append(" | Errors: ${stats.imageErrors + stats.messageErrors}")
+            append(" | JSON: ${stats.jsonPhotoCount} photos")
+        }
+        
+        val totalMemory = stats.activeCacheCount + stats.memoryCacheCount
+        val avgMemoryTime = if (totalMemory > 0) {
+            ((stats.activeCacheAvgTime * stats.activeCacheCount + stats.memoryCacheAvgTime * stats.memoryCacheCount) / totalMemory)
+        } else 0.0
+        
+        dialogView.findViewById<TextView>(R.id.txtDialogMemory).text = buildString {
+            append("Count: $totalMemory images\n")
+            append("Avg Time: ${"%.1f".format(avgMemoryTime)}ms (instant)")
+        }
+        
+        dialogView.findViewById<TextView>(R.id.txtDialogDisk).text = buildString {
+            append("Count: ${stats.diskCacheCount} images\n")
+            append("Avg Time: ${"%.1f".format(stats.diskCacheAvgTime)}ms")
+            append(" | Decode: ${"%.1f".format(stats.diskCacheAvgDecode)}ms")
+            append(" | Transform: ${"%.1f".format(stats.diskCacheAvgTransform)}ms")
+        }
+        
+        dialogView.findViewById<TextView>(R.id.txtDialogNetwork).text = buildString {
+            append("Count: ${stats.networkCount} images\n")
+            append("Avg Time: ${"%.1f".format(stats.networkAvgTime)}ms")
+            append(" | Fetch: ${"%.1f".format(stats.networkAvgFetch)}ms")
+            append(" | Decode: ${"%.1f".format(stats.networkAvgDecode)}ms")
+            append(" | Transform: ${"%.1f".format(stats.networkAvgTransform)}ms")
+        }
+        
+        MaterialAlertDialogBuilder(this)
+            .setView(dialogView)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+    
+    private fun showFilterDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.imageloader_dialog_filter, null)
+        val chipGroup = dialogView.findViewById<ChipGroup>(R.id.chipGroupFilter)
+        val tempSelected = selectedCategories.toMutableSet()
+        
         LogCategory.values().forEach { category ->
             val chip = Chip(this).apply {
                 text = category.displayName
                 isCheckable = true
-                isChecked = true
+                isChecked = category in selectedCategories
                 setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        selectedCategories.add(category)
-                    } else {
-                        selectedCategories.remove(category)
-                    }
-                    adapter.filterByCategories(selectedCategories)
+                    if (isChecked) tempSelected.add(category)
+                    else tempSelected.remove(category)
                 }
             }
-            selectedCategories.add(category)
-            chipGroupFilter.addView(chip)
+            chipGroup.addView(chip)
         }
+        
+        MaterialAlertDialogBuilder(this)
+            .setView(dialogView)
+            .create()
+            .apply {
+                show()
+                dialogView.findViewById<Button>(R.id.btnSelectAll).setOnClickListener {
+                    for (i in 0 until chipGroup.childCount) {
+                        (chipGroup.getChildAt(i) as? Chip)?.isChecked = true
+                    }
+                }
+                dialogView.findViewById<Button>(R.id.btnApply).setOnClickListener {
+                    selectedCategories.clear()
+                    selectedCategories.addAll(tempSelected)
+                    adapter.filterByCategories(selectedCategories)
+                    updateQuickStats()
+                    dismiss()
+                }
+            }
     }
 
     override fun onDestroy() {
@@ -100,17 +157,17 @@ class LogViewerActivity : AppCompatActivity() {
         ImageLoaderLogger.removeListener(logListener)
     }
 
-    private fun updateStats() {
+    private fun updateQuickStats() {
         val stats = ImageLoaderLogger.getLogStats()
-        txtStatTotal.text = stats.totalLogs.toString()
-        txtStatImages.text = stats.totalImageRequests.toString()
-        txtStatCache.text = stats.fromCache.toString()
-        txtStatNetwork.text = stats.fromNetwork.toString()
-        txtStatErrors.text = (stats.imageErrors + stats.messageErrors).toString()
-        txtStatJson.text = stats.jsonPhotoCount.toString()
-        txtStatAvg.text = "${"%.1f".format(stats.avgTotalTime)}ms"
-        txtStatDecode.text = "${"%.1f".format(stats.avgDecodeTime)}ms"
-        txtStatTransform.text = "${"%.1f".format(stats.avgTransformTime)}ms"
+        val totalMemory = stats.activeCacheCount + stats.memoryCacheCount
+        
+        txtQuickStats.text = buildString {
+            append("${stats.totalLogs} logs")
+            append(" | Mem: $totalMemory")
+            append(" | Disk: ${stats.diskCacheCount}")
+            append(" | Net: ${stats.networkCount}")
+            append(" | Err: ${stats.imageErrors + stats.messageErrors}")
+        }
     }
 }
 

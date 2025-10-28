@@ -89,17 +89,34 @@ object ImageLoaderLogger {
         val imageLoadLogs = logs.filterIsInstance<ImageLoadLog>()
         val messageLogs = logs.filterIsInstance<MessageLog>()
         
+        val activeCache = imageLoadLogs.filter { it.source == LogSource.ACTIVE_CACHE && it.error == null }
+        val memoryCache = imageLoadLogs.filter { it.source == LogSource.MEMORY_CACHE && it.error == null }
+        val diskCache = imageLoadLogs.filter { it.source == LogSource.DISK_CACHE && it.error == null }
+        val network = imageLoadLogs.filter { it.source == LogSource.NETWORK && it.error == null }
+        
         return LogStats(
             totalLogs = logs.size,
             totalImageRequests = imageLoadLogs.size,
-            fromCache = imageLoadLogs.count { it.source != LogSource.NETWORK },
-            fromNetwork = imageLoadLogs.count { it.source == LogSource.NETWORK },
             imageErrors = imageLoadLogs.count { it.error != null },
             messageErrors = messageLogs.count { it.level == LogLevel.ERROR },
             jsonPhotoCount = jsonPhotoCount,
-            avgTotalTime = imageLoadLogs.filter { it.error == null }.map { it.totalTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
-            avgDecodeTime = imageLoadLogs.mapNotNull { it.decodeTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
-            avgTransformTime = imageLoadLogs.mapNotNull { it.transformTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0
+            
+            activeCacheCount = activeCache.size,
+            activeCacheAvgTime = activeCache.map { it.totalTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            
+            memoryCacheCount = memoryCache.size,
+            memoryCacheAvgTime = memoryCache.map { it.totalTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            
+            diskCacheCount = diskCache.size,
+            diskCacheAvgTime = diskCache.map { it.totalTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            diskCacheAvgDecode = diskCache.mapNotNull { it.decodeTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            diskCacheAvgTransform = diskCache.mapNotNull { it.transformTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            
+            networkCount = network.size,
+            networkAvgTime = network.map { it.totalTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            networkAvgFetch = network.mapNotNull { it.fetchTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            networkAvgDecode = network.mapNotNull { it.decodeTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            networkAvgTransform = network.mapNotNull { it.transformTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0
         )
     }
 }
@@ -107,12 +124,24 @@ object ImageLoaderLogger {
 data class LogStats(
     val totalLogs: Int,
     val totalImageRequests: Int,
-    val fromCache: Int,
-    val fromNetwork: Int,
     val imageErrors: Int,
     val messageErrors: Int,
     val jsonPhotoCount: Int,
-    val avgTotalTime: Double,
-    val avgDecodeTime: Double,
-    val avgTransformTime: Double
+    
+    val activeCacheCount: Int,
+    val activeCacheAvgTime: Double,
+    
+    val memoryCacheCount: Int,
+    val memoryCacheAvgTime: Double,
+    
+    val diskCacheCount: Int,
+    val diskCacheAvgTime: Double,
+    val diskCacheAvgDecode: Double,
+    val diskCacheAvgTransform: Double,
+    
+    val networkCount: Int,
+    val networkAvgTime: Double,
+    val networkAvgFetch: Double,
+    val networkAvgDecode: Double,
+    val networkAvgTransform: Double
 )
