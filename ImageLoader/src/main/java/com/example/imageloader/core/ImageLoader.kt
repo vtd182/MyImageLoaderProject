@@ -7,40 +7,36 @@ import com.example.imageloader.cache.MemoryCache
 import com.example.imageloader.decode.BitmapDecoder
 import com.example.imageloader.fetcher.HttpFetcher
 
-class ImageLoader private constructor(context: Context) {
+class ImageLoader private constructor(context: Context, useBitmapPool: Boolean) {
+    private val sizes = MemorySizeCalculator.calculate(context, useBitmapPool)
+    private val bitmapPool = LruBitmapPool(sizes.bitmapPoolSize.toLong())
+    private val memoryCache = MemoryCache(sizes.memoryCacheSize, bitmapPool)
 
     private val diskCache = DiskCache(context)
     private val activeResources = ActiveResources()
     private val fetcher = HttpFetcher()
-    private val bitmapPool = LruBitmapPool((Runtime.getRuntime().maxMemory() / 8))
-    private val memoryCache =
-        MemoryCache((Runtime.getRuntime().maxMemory() / 8).toInt(), bitmapPool)
+
     val engine = Engine(activeResources, memoryCache, diskCache, fetcher, bitmapPool)
-    
+
     init {
-        // Set bitmap pool for decoder to reuse bitmaps
         BitmapDecoder.setBitmapPool(bitmapPool)
-        // Enable/disable bitmap pool usage for decode
-        // Set to false for better FPS, true for less GC
-        BitmapDecoder.setUseBitmapPool(false)
+        BitmapDecoder.setUseBitmapPool(useBitmapPool)
     }
 
     companion object {
         @Volatile
         private var INSTANCE: ImageLoader? = null
 
-        fun getInstance(context: Context): ImageLoader {
+        fun getInstance(context: Context, useBitmapPool: Boolean = false): ImageLoader {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: ImageLoader(context.applicationContext).also { INSTANCE = it }
+                INSTANCE ?: ImageLoader(context.applicationContext, useBitmapPool).also {
+                    INSTANCE = it
+                }
             }
         }
 
-        fun with(context: Context): RequestBuilder {
-            return RequestBuilder(getInstance(context).engine)
-        }
-        
-        fun setFastScrolling(context: Context, isFast: Boolean) {
-            getInstance(context).engine.setFastScrolling(isFast)
+        fun with(context: Context, useBitmapPool: Boolean = false): RequestBuilder {
+            return RequestBuilder(getInstance(context, useBitmapPool).engine)
         }
     }
 }

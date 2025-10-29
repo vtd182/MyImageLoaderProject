@@ -3,11 +3,18 @@ package com.example.imageloader.cache
 import android.graphics.Bitmap
 import android.util.LruCache
 import com.example.imageloader.core.abstract.BitmapPool
+import com.example.imageloader.logger.ImageLoaderLogger
 
 class MemoryCache(
     maxBytes: Int,
     private val bitmapPool: BitmapPool? = null
 ) {
+    private var itemCount = 0
+
+    init {
+        ImageLoaderLogger.d("MemoryCache", "MemoryCache initialized with maxBytes: $maxBytes")
+    }
+
     private val cache = object : LruCache<String, Bitmap>(maxBytes) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.safeByteCount()
 
@@ -17,6 +24,13 @@ class MemoryCache(
             oldValue: Bitmap?,
             newValue: Bitmap?
         ) {
+            if (evicted) {
+                ImageLoaderLogger.d(
+                    "MemoryCache",
+                    "Evicting image, items in cache before evict: ${itemCount + 1}"
+                )
+                itemCount--
+            }
             if (evicted && oldValue != null && oldValue.isMutable && !oldValue.isRecycled) {
                 bitmapPool?.put(oldValue)
             }
@@ -29,13 +43,24 @@ class MemoryCache(
         if (bitmap.isRecycled) {
             return null
         }
-        return cache.put(key, bitmap)
+        val oldBitmap = cache.put(key, bitmap)
+        if (oldBitmap == null) {
+            itemCount++
+        }
+        return oldBitmap
     }
 
-    fun remove(key: String): Bitmap? = cache.remove(key)
+    fun remove(key: String): Bitmap? {
+        val removed = cache.remove(key)
+        if (removed != null) {
+            itemCount--
+        }
+        return removed
+    }
 
     fun clear() {
         cache.evictAll()
+        itemCount = 0
     }
 
     val size: Int get() = cache.size()
