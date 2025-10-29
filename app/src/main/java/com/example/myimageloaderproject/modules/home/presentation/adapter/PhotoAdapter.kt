@@ -63,7 +63,7 @@ class PhotoAdapter(
             photo.urls.small?.let {
                 val request = ImageLoader.with(imgPhoto.context)
                     .overrideSize(itemWidth, itemHeight)
-                    .placeholder(photo.color)
+                    .apply { if (android.os.Build.VERSION.SDK_INT > 27) placeholder(photo.color) }
                     .error(R.drawable.ic_retry)
                     .resize(400, 400)
                     .enableShimmer(true)
