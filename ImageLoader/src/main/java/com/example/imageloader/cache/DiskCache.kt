@@ -14,11 +14,11 @@ import java.io.IOException
 class DiskCache(
     context: Context,
     private val maxSizeBytes: Long = 150L * 1000 * 1000, // 150MB
-    private val logger: Logger = AndroidLogger
 ) {
     companion object {
         private const val TAG = "DiskCache"
     }
+
     private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -37,7 +37,7 @@ class DiskCache(
         return try {
             file.readBytes()
         } catch (e: Exception) {
-            logger.wtf("DiskCache", "get() failed: ${e.message}")
+            ImageLoaderLogger.e("DiskCache", "get() failed: ${e.message}")
             null
         }
     }
@@ -65,7 +65,11 @@ class DiskCache(
         // Use cached size instead of scanning all files
         if (currentSize + estimatedSize > maxSizeBytes) {
             val requiredFree = (currentSize + estimatedSize) - maxSizeBytes
-            ImageLoaderLogger.w(TAG, "Cache full, trimming ${requiredFree / 1000}KB", category = LogCategory.CACHE)
+            ImageLoaderLogger.w(
+                TAG,
+                "Cache full, trimming ${requiredFree / 1000}KB",
+                category = LogCategory.CACHE
+            )
             // Trim asynchronously to avoid blocking
             trimCacheAsync(requiredFree)
         }
@@ -82,7 +86,7 @@ class DiskCache(
             }
             success
         } catch (e: IOException) {
-            logger.wtf("DiskCache", "put() failed: ${e.message}")
+            ImageLoaderLogger.e("DiskCache", "put() failed: ${e.message}")
             tempFile.delete()
             false
         }
@@ -123,7 +127,11 @@ class DiskCache(
                         }
                     }
                 if (filesDeleted > 0) {
-                    ImageLoaderLogger.i(TAG, "Trimmed cache: deleted $filesDeleted files, freed ${freed / 1000}KB", LogCategory.CACHE)
+                    ImageLoaderLogger.i(
+                        TAG,
+                        "Trimmed cache: deleted $filesDeleted files, freed ${freed / 1000}KB",
+                        LogCategory.CACHE
+                    )
                 }
             }
         }
@@ -137,15 +145,5 @@ class DiskCache(
         return possible
             .map { File(cacheDir, "$key$it") }
             .firstOrNull { it.exists() }
-    }
-
-    interface Logger {
-        fun wtf(tag: String, msg: String)
-    }
-
-    object AndroidLogger : Logger {
-        override fun wtf(tag: String, msg: String) {
-            android.util.Log.wtf(tag, msg)
-        }
     }
 }
