@@ -8,7 +8,6 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.core.graphics.toColorInt
 import com.example.imageloader.target.ImageViewTarget
-import com.example.imageloader.target.Target
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.imageloader.transformation.Transformation
 
@@ -62,8 +61,8 @@ class RequestBuilder(
             outHeight,
             enableShimmer
         )
-        
-        val errorDrawable = errorRes?.let { 
+
+        val errorDrawable = errorRes?.let {
             AppCompatResources.getDrawable(imageView.context, it)
         }
         val target = ImageViewTarget(imageView, errorDrawable, enableShimmer)
@@ -107,22 +106,6 @@ class RequestBuilder(
     fun error(resId: Int): RequestBuilder {
         errorRes = resId
         return this
-    }
-
-
-    fun into(target: Target) {
-        val request = Request(
-            url ?: throw IllegalArgumentException("URL required"),
-            resizeWidth,
-            resizeHeight,
-            useMemoryCache,
-            useDiskCache,
-            transformations.toList(),
-            outWidth,
-            outHeight,
-            enableShimmer
-        )
-        engine.load(request, target)
     }
 
     fun overrideSize(width: Int, height: Int): RequestBuilder {

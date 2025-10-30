@@ -193,4 +193,109 @@ class ImageViewTargetTest {
         field.isAccessible = true
         return field.get(target) as EngineResource?
     }
+
+    @Test
+    fun `onLoadStarted should clear background when shimmer disabled`() {
+        val activity =
+            Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
+        val imageView = ImageView(activity).apply {
+            setBackgroundColor(0xFF0000FF.toInt()) // màu cũ
+        }
+        val target = ImageViewTarget(imageView, enableShimmer = false)
+
+        target.onLoadStarted()
+        Robolectric.flushForegroundThreadScheduler()
+
+        // Background phải clear (transparent)
+        val color = (imageView.background as? ColorDrawable)?.color
+        assertEquals(android.graphics.Color.TRANSPARENT, color)
+    }
+
+    @Test
+    fun `onLoadStarted should trigger shimmer when enabled`() {
+        val activity =
+            Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
+        val imageView = ImageView(activity)
+        imageView.setImageDrawable(android.graphics.drawable.ColorDrawable(0xFFEEEEEE.toInt()))
+
+        val target = ImageViewTarget(imageView, enableShimmer = true)
+        target.onLoadStarted()
+        Robolectric.flushForegroundThreadScheduler()
+
+        val drawable = imageView.drawable
+        assertNotNull(drawable)
+        assertTrue(drawable is android.graphics.drawable.LayerDrawable)
+    }
+
+    @Test
+    fun `onLoadFailed with retry should set click listener and reset on retry`() {
+        val activity =
+            Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
+        val imageView = ImageView(activity)
+        val errorDrawable = ColorDrawable(0xFFFF0000.toInt())
+        val target = ImageViewTarget(imageView, errorDrawable)
+
+        var retried = false
+        val retryCallback = { retried = true }
+
+        // simulate failure with retry
+        target.onLoadFailed(retryCallback)
+        Robolectric.flushForegroundThreadScheduler()
+
+        assertNotNull(imageView.hasOnClickListeners())
+
+        // Giả lập click retry
+        imageView.performClick()
+        Robolectric.flushForegroundThreadScheduler()
+
+        // Retry callback phải chạy
+        assertTrue(retried)
+
+        // Drawable nên bị clear sau click (đang retry)
+        val bgColor = (imageView.background as? ColorDrawable)?.color
+        assertEquals(android.graphics.Color.TRANSPARENT, bgColor)
+    }
+
+    @Test
+    fun `showShimmer should wrap current drawable into LayerDrawable`() {
+        val activity =
+            Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
+        val imageView = ImageView(activity)
+        val target = ImageViewTarget(imageView, enableShimmer = true)
+
+        // Giả lập drawable gốc
+        imageView.setImageDrawable(android.graphics.drawable.ColorDrawable(0xFFCCCCCC.toInt()))
+
+        // Gọi showShimmer thông qua onLoadStarted()
+        val method = ImageViewTarget::class.java.getDeclaredMethod("showShimmer")
+        method.isAccessible = true
+        method.invoke(target)
+
+        val drawable = imageView.drawable
+        assertTrue(drawable is android.graphics.drawable.LayerDrawable)
+        val layerDrawable = drawable as android.graphics.drawable.LayerDrawable
+        assertEquals(2, layerDrawable.numberOfLayers)
+    }
+
+    @Test
+    fun `hideShimmer should stop and clear shimmer reference`() {
+        val activity =
+            Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
+        val imageView = ImageView(activity)
+        val target = ImageViewTarget(imageView, enableShimmer = true)
+
+        // Tạo shimmer giả
+        val shimmerDrawableField =
+            ImageViewTarget::class.java.getDeclaredField("shimmerDrawable")
+                .apply { isAccessible = true }
+        val shimmer = com.example.imageloader.drawable.ShimmerDrawable()
+        shimmerDrawableField.set(target, shimmer)
+
+        val method = ImageViewTarget::class.java.getDeclaredMethod("hideShimmer")
+        method.isAccessible = true
+        method.invoke(target)
+
+        val after = shimmerDrawableField.get(target)
+        assertNull(after)
+    }
 }
