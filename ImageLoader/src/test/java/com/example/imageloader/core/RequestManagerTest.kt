@@ -32,7 +32,7 @@ class RequestManagerTest {
         MockitoAnnotations.openMocks(this)
         RequestManager.clearInternalStateForTest()
     }
-x
+
     @After
     fun teardown() {
         RequestManager.clearInternalStateForTest()
