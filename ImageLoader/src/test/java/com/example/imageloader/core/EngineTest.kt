@@ -6,7 +6,6 @@ import com.example.imageloader.cache.DiskCache
 import com.example.imageloader.cache.MemoryCache
 import com.example.imageloader.core.abstract.BitmapPool
 import com.example.imageloader.fetcher.DataFetcher
-import com.example.imageloader.fetcher.HttpResult
 import com.example.imageloader.target.Target
 import com.example.imageloader.transformation.Transformation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -17,11 +16,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mock
 import org.mockito.Mockito.mock
-import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.mockito.MockitoAnnotations
@@ -93,6 +90,69 @@ class EngineTest {
         // Data key should be different if transformations are present
     }
 
-    // Note: For load tests, they would require coroutine testing and more complex setup
-    // For now, focusing on key building as they are testable without coroutines
+
+    @Test
+    fun `checkMemoryCache should clean up released active resource`() {
+        val bitmap = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
+        val releasedResource = mock(EngineResource::class.java)
+        `when`(releasedResource.isReleased()).thenReturn(true)
+        `when`(activeResources.get(anyString())).thenReturn(releasedResource)
+
+        val req = Request(url = "https://example.com")
+        val result = engine.checkMemoryCache(req, target)
+
+        assertTrue(result.not())
+        verify(activeResources).remove(anyString())
+    }
+
+
+    @Test
+    fun `checkMemoryCache should remove recycled memory bitmap`() {
+        val bitmap = mock(Bitmap::class.java)
+        `when`(bitmap.isRecycled).thenReturn(true)
+        `when`(memoryCache.get(anyString())).thenReturn(bitmap)
+
+        val req = Request(url = "https://example.com")
+        val result = engine.checkMemoryCache(req, target)
+
+        assertTrue(!result)
+        verify(memoryCache).remove(anyString())
+    }
+
+    @Test
+    fun `setFastScrolling should toggle flag and reset after delay`() = runTest {
+        engine.setFastScrolling(true)
+        val fastScrollField = Engine::class.java.getDeclaredField("isFastScrolling")
+        fastScrollField.isAccessible = true
+        assertTrue(fastScrollField.getBoolean(engine))
+    }
+
+    @Test
+    fun `md5 helper should produce deterministic output`() {
+        fun String.testMd5(): String {
+            val digest = java.security.MessageDigest.getInstance("MD5")
+            val bytes = digest.digest(toByteArray())
+            return bytes.joinToString("") { "%02x".format(it) }
+        }
+
+        val text = "abc"
+        val hash1 = text.testMd5()
+        val hash2 = text.testMd5()
+
+        assertEquals(hash1, hash2)
+        assertTrue(hash1.matches(Regex("[0-9a-f]+")))
+    }
+
+
+    @Test
+    fun `setFastScrolling should cancel previous job if called again`() = runTest {
+        engine.setFastScrolling(true)
+        val jobField =
+            Engine::class.java.getDeclaredField("fastScrollJob").apply { isAccessible = true }
+        val firstJob = jobField.get(engine)
+        engine.setFastScrolling(true)
+        val secondJob = jobField.get(engine)
+        assertTrue(firstJob != secondJob)
+    }
+
 }

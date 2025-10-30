@@ -1,9 +1,7 @@
 package com.example.imageloader.ui
 
+import android.content.Intent
 import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
@@ -15,7 +13,6 @@ import com.example.imageloader.R
 import com.example.imageloader.logger.ImageLoaderLogger
 import com.example.imageloader.logger.LogCategory
 import com.example.imageloader.logger.LogEntry
-import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -29,6 +26,7 @@ class LogViewerActivity : AppCompatActivity() {
     private lateinit var btnClear: ImageView
     private lateinit var adapter: LogAdapter
     private val selectedCategories = mutableSetOf<LogCategory>()
+    private val quickStatsFormatter = QuickStatsFormatter()
 
     private val logListener: (LogEntry) -> Unit = { log ->
         runOnUiThread {
@@ -49,7 +47,10 @@ class LogViewerActivity : AppCompatActivity() {
         btnFilter = findViewById(R.id.btnFilter)
         btnClear = findViewById(R.id.btnClear)
 
-        adapter = LogAdapter()
+        adapter = LogAdapter { url ->
+            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+            startActivity(intent)
+        }
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
 
@@ -91,18 +92,19 @@ class LogViewerActivity : AppCompatActivity() {
             ((stats.activeCacheAvgTime * stats.activeCacheCount + stats.memoryCacheAvgTime * stats.memoryCacheCount) / totalMemory)
         } else 0.0
 
-        dialogView.findViewById<TextView>(R.id.txtDialogMemoryCount).text = "$totalMemory images"
+        dialogView.findViewById<TextView>(R.id.txtDialogMemoryCount).text =
+            getString(R.string.imageloader_images_count, totalMemory)
         dialogView.findViewById<TextView>(R.id.txtDialogMemoryTime).text =
-            "${"%.1f".format(avgMemoryTime)}ms"
+            getString(R.string.imageloader_time_with_unit, avgMemoryTime)
 
         dialogView.findViewById<TextView>(R.id.txtDialogDiskCount).text =
-            "${stats.diskCacheCount} images"
+            getString(R.string.imageloader_images_count, stats.diskCacheCount)
         dialogView.findViewById<TextView>(R.id.txtDialogDiskTime).text =
-            "${"%.1f".format(stats.diskCacheAvgTime)}ms"
+            getString(R.string.imageloader_time_with_unit, stats.diskCacheAvgTime)
         dialogView.findViewById<TextView>(R.id.txtDialogDiskDecode).text =
-            "${"%.1f".format(stats.diskCacheAvgDecode)}ms"
+            getString(R.string.imageloader_time_with_unit, stats.diskCacheAvgDecode)
         dialogView.findViewById<TextView>(R.id.txtDialogDiskTransform).text =
-            "${"%.1f".format(stats.diskCacheAvgTransform)}ms"
+            getString(R.string.imageloader_time_with_unit, stats.diskCacheAvgTransform)
 
         dialogView.findViewById<TextView>(R.id.txtDialogJsonCount).text =
             stats.jsonPhotoCount.toString()
@@ -110,15 +112,15 @@ class LogViewerActivity : AppCompatActivity() {
             stats.jsonCurrentPage.toString()
 
         dialogView.findViewById<TextView>(R.id.txtDialogNetworkCount).text =
-            "${stats.networkCount} images"
+            getString(R.string.imageloader_images_count, stats.networkCount)
         dialogView.findViewById<TextView>(R.id.txtDialogNetworkTime).text =
-            "${"%.1f".format(stats.networkAvgTime)}ms"
+            getString(R.string.imageloader_time_with_unit, stats.networkAvgTime)
         dialogView.findViewById<TextView>(R.id.txtDialogNetworkFetch).text =
-            "${"%.1f".format(stats.networkAvgFetch)}ms"
+            getString(R.string.imageloader_time_with_unit, stats.networkAvgFetch)
         dialogView.findViewById<TextView>(R.id.txtDialogNetworkDecode).text =
-            "${"%.1f".format(stats.networkAvgDecode)}ms"
+            getString(R.string.imageloader_time_with_unit, stats.networkAvgDecode)
         dialogView.findViewById<TextView>(R.id.txtDialogNetworkTransform).text =
-            "${"%.1f".format(stats.networkAvgTransform)}ms"
+            getString(R.string.imageloader_time_with_unit, stats.networkAvgTransform)
 
         MaterialAlertDialogBuilder(this)
             .setView(dialogView)
@@ -171,152 +173,14 @@ class LogViewerActivity : AppCompatActivity() {
 
     private fun updateQuickStats() {
         val stats = ImageLoaderLogger.getLogStats()
-        val totalMemory = stats.activeCacheCount + stats.memoryCacheCount
-
-        txtQuickStats.text = buildString {
-            append("${stats.totalLogs} logs")
-            append(" | Mem: $totalMemory")
-            append(" | Disk: ${stats.diskCacheCount}")
-            append(" | Net: ${stats.networkCount}")
-            append(" | Err: ${stats.imageErrors + stats.messageErrors}")
-        }
-    }
-}
-
-internal class LogAdapter : RecyclerView.Adapter<LogAdapter.LogViewHolder>() {
-    private val allLogs = mutableListOf<LogEntry>()
-    private val filteredLogs = mutableListOf<LogEntry>()
-
-    fun submitLogs(newLogs: List<LogEntry>, selectedCategories: Set<LogCategory>) {
-        allLogs.clear()
-        allLogs.addAll(newLogs)
-        filterByCategories(selectedCategories)
-    }
-
-    fun addLog(log: LogEntry, selectedCategories: Set<LogCategory>) {
-        allLogs.add(0, log)
-        if (selectedCategories.isEmpty() || log.category in selectedCategories) {
-            filteredLogs.add(0, log)
-            notifyItemInserted(0)
-        }
-    }
-
-    fun clearLogs() {
-        allLogs.clear()
-        filteredLogs.clear()
-        notifyDataSetChanged()
-    }
-
-    fun filterByCategories(selectedCategories: Set<LogCategory>) {
-        filteredLogs.clear()
-        if (selectedCategories.isEmpty()) {
-            filteredLogs.addAll(allLogs)
-        } else {
-            filteredLogs.addAll(allLogs.filter { it.category in selectedCategories })
-        }
-        notifyDataSetChanged()
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LogViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.imageloader_item_log, parent, false)
-        return LogViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: LogViewHolder, position: Int) {
-        holder.bind(filteredLogs[position])
-    }
-
-    override fun getItemCount() = filteredLogs.size
-
-    class LogViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        private val txtLogTime: TextView = view.findViewById(R.id.txtLogTime)
-        private val txtLogSource: TextView = view.findViewById(R.id.txtLogSource)
-        private val txtLogTotal: TextView = view.findViewById(R.id.txtLogTotal)
-        private val layoutTimings: View = view.findViewById(R.id.layoutTimings)
-        private val txtTimings: TextView = view.findViewById(R.id.txtTimings)
-        private val txtFastScroll: TextView = view.findViewById(R.id.txtFastScroll)
-        private val txtLogUrl: TextView = view.findViewById(R.id.txtLogUrl)
-        private val txtLogError: TextView = view.findViewById(R.id.txtLogError)
-        private val btnOpenUrl: MaterialButton = view.findViewById(R.id.btnOpenUrl)
-
-        fun bind(log: LogEntry) {
-            when (log) {
-                is com.example.imageloader.logger.ImageLoadLog -> bindImageLog(log)
-                is com.example.imageloader.logger.MessageLog -> bindMessageLog(log)
-            }
-        }
-
-        private fun bindImageLog(log: com.example.imageloader.logger.ImageLoadLog) {
-            val sdf = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.getDefault())
-            txtLogTime.text = sdf.format(java.util.Date(log.timestamp))
-
-            txtLogSource.text = if (log.error != null) {
-                "❌ ${log.source.name.replace("_", " ")}"
-            } else {
-                log.source.name.replace("_", " ")
-            }
-
-            txtLogTotal.text = "${log.totalTimeMs}ms"
-
-            val timingParts = mutableListOf<String>()
-            log.fetchTimeMs?.let { timingParts.add("Fetch: ${it}ms") }
-            log.decodeTimeMs?.let { timingParts.add("Decode: ${it}ms") }
-            log.transformTimeMs?.let { timingParts.add("Transform: ${it}ms") }
-
-            if (timingParts.isNotEmpty()) {
-                layoutTimings.visibility = View.VISIBLE
-                txtTimings.text = timingParts.joinToString(" | ")
-            } else {
-                layoutTimings.visibility = View.GONE
-            }
-
-            txtFastScroll.visibility = if (log.isFastScrolling) View.VISIBLE else View.GONE
-
-            txtLogUrl.text = log.url
-
-            if (log.error != null) {
-                txtLogError.visibility = View.VISIBLE
-                txtLogError.text = "Error: ${log.error}"
-                btnOpenUrl.visibility = View.GONE
-            } else {
-                txtLogError.visibility = View.GONE
-                btnOpenUrl.visibility = View.VISIBLE
-                btnOpenUrl.setOnClickListener {
-                    val intent = android.content.Intent(
-                        android.content.Intent.ACTION_VIEW,
-                        log.url.toUri()
-                    )
-                    itemView.context.startActivity(intent)
-                }
-            }
-        }
-
-        private fun bindMessageLog(log: com.example.imageloader.logger.MessageLog) {
-            val sdf = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.getDefault())
-            txtLogTime.text = sdf.format(java.util.Date(log.timestamp))
-
-            val icon = when (log.level) {
-                com.example.imageloader.logger.LogLevel.VERBOSE -> "💬"
-                com.example.imageloader.logger.LogLevel.DEBUG -> "🐛"
-                com.example.imageloader.logger.LogLevel.INFO -> "ℹ️"
-                com.example.imageloader.logger.LogLevel.WARNING -> "⚠️"
-                com.example.imageloader.logger.LogLevel.ERROR -> "❌"
-            }
-
-            txtLogSource.text = "$icon ${log.category.displayName} | ${log.tag}"
-            txtLogTotal.text = log.level.name
-
-            layoutTimings.visibility = View.GONE
-            txtLogUrl.text = log.message
-            btnOpenUrl.visibility = View.GONE
-
-            if (log.throwable != null) {
-                txtLogError.visibility = View.VISIBLE
-                txtLogError.text = "${log.throwable.javaClass.simpleName}: ${log.throwable.message}"
-            } else {
-                txtLogError.visibility = View.GONE
-            }
-        }
+        val quickStats = quickStatsFormatter.format(stats)
+        txtQuickStats.text = getString(
+            R.string.imageloader_quick_stats_format,
+            quickStats.totalLogs,
+            quickStats.memoryCount,
+            quickStats.diskCount,
+            quickStats.networkCount,
+            quickStats.errorCount
+        )
     }
 }

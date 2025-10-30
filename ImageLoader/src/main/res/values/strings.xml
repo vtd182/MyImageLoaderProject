@@ -59,4 +59,9 @@
     <string name="imageloader_json_backup_default_stats">Photos: 0 | Current Page: 0</string>
     <string name="imageloader_network">Network</string>
     <string name="imageloader_network_default_stats">Count: 0 images\nAvg Time: 0.0ms | Fetch: 0.0ms | Decode: 0.0ms | Transform: 0.0ms</string>
+
+    <!-- Formatted strings -->
+    <string name="imageloader_quick_stats_format">%1$d logs | Mem: %2$d | Disk: %3$d | Net: %4$d | Err: %5$d</string>
+    <string name="imageloader_images_count">%1$d images</string>
+    <string name="imageloader_time_with_unit">%1$.1fms</string>
 </resources>
