@@ -1,8 +1,4 @@
-# Image Loader Library - Báo Cáo Chi Tiết
-
-Thư viện tải và hiển thị ảnh hiệu năng cao cho Android với hệ thống cache đa tầng, quản lý bộ nhớ
-thông minh, và công cụ monitoring tích hợp.
-
+# Image Loader - ZTF2025
 ---
 
 ## Mục Lục
@@ -2590,7 +2586,7 @@ Pseudo highlights:
 
     - Tính toán chiều rộng/chiều cao theo span hiện tại.
     -
-    `ImageLoader.with(...).overrideSize().placeholder(hexColor).resize(400, 400).enableShimmer(true)`
+  `ImageLoader.with(...).overrideSize().placeholder(hexColor).resize(400, 400).enableShimmer(true)`
     - Áp dụng `CenterCropRoundedCorners` khi người dùng bật từ bottom-sheet.
     - Đặt mô tả và long-press mở `bottom_sheet_download`, xử lý tải ảnh qua `MediaStore` (Android
       10+) hoặc `Downloads` dir (legacy).
