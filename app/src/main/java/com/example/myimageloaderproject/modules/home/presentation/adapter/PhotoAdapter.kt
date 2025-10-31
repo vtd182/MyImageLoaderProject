@@ -77,7 +77,7 @@ class PhotoAdapter(
                 request.into(imgPhoto)
             }
 
-            val desc = photo.description ?: "Photo ${photo.id}"
+            val desc = photo.alt_description ?: "Photo ${photo.id}"
             tvDescription.text = desc
 
             tvDescription.setOnLongClickListener {

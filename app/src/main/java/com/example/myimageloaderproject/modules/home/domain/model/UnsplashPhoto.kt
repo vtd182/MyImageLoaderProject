@@ -1,4 +1,5 @@
 package com.example.myimageloaderproject.modules.home.domain.model
+
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -10,6 +11,7 @@ data class UnsplashPhoto(
     val color: String? = "#000000",
     val likes: Int,
     val description: String?,
+    val alt_description: String?,
     val urls: UnsplashUrls,
     val links: UnsplashLinks,
     val user: UnsplashUser

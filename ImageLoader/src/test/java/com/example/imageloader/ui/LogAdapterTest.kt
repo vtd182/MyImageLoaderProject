@@ -70,7 +70,10 @@ class LogAdapterTest {
     @Test
     fun `should reset all state when clearing logs`() {
         val adapter = createAdapter()
-        adapter.submitLogs(listOf(sampleMessageLog(), sampleImageLog()), setOf(LogCategory.GENERAL, LogCategory.IMAGE_LOAD))
+        adapter.submitLogs(
+            listOf(sampleMessageLog(), sampleImageLog()),
+            setOf(LogCategory.GENERAL, LogCategory.IMAGE_LOAD)
+        )
 
         adapter.clearLogs()
 
