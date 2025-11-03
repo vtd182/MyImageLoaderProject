@@ -22,7 +22,7 @@
 Image Loader là một thư viện tải và cache ảnh được phát triển cho nền tảng Android, lấy cảm hứng từ
 các thư viện nổi tiếng như **Glide** và **Picasso** nhưng được xây dựng từ đầu với mục tiêu:
 
-- Tối ưu hiệu năng cao
+- Tối ưu hóa hiệu năng
 - Dễ dàng debug và monitoring
 - Kiến trúc rõ ràng, dễ maintain
 
@@ -380,7 +380,6 @@ class CenterCropRoundedCorners(val radius: Float) : Transformation {
 **Key Points:**
 
 - **Scale calculation**: Đảm bảo cover toàn bộ output (như CSS `background-size: cover`)
-- **BitmapShader**: Hiệu năng tốt hơn so với crop + draw
 - **Bitmap pooling**: Reuse bitmap từ pool để giảm allocations
 - **Cache key**: Bao gồm transformation params để cache riêng biệt
 
@@ -2927,14 +2926,3 @@ backup JSON (`JsonBackupManager`), còn luồng chính parsing API sử dụng *
 
 ---
 
-## Kết Luận
-
-Image Loader Library là một dự án hoàn chỉnh demonstrating:
-
-- **Performance**: Multi-level caching với priority system
-- **Architecture**: Clean code với separation of concerns
-- **Monitoring**: Real-time logging và statistics
-- **User Experience**: Offline support, shimmer effects
-- **Testing**: High code coverage với unit tests
-
----
