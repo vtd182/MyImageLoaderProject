@@ -17,7 +17,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.imageloader.core.ImageLoader
 import com.example.imageloader.core.RequestManager
-import com.example.imageloader.core.RequestPriority
+import com.example.imageloader.core.enums.RequestPriority
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
