@@ -4,6 +4,7 @@ import com.example.imageloader.cache.ActiveResources
 import com.example.imageloader.cache.DiskCache
 import com.example.imageloader.cache.MemoryCache
 import com.example.imageloader.core.abstract.BitmapPool
+import com.example.imageloader.core.enums.RequestPriority
 import com.example.imageloader.decode.BitmapDecoder
 import com.example.imageloader.fetcher.DataFetcher
 import com.example.imageloader.logger.ImageLoadLog
@@ -22,17 +23,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import kotlin.system.measureTimeMillis
-
-enum class RequestPriority {
-    HIGH, NORMAL, LOW
-}
-
-data class PrioritizedRequest(
-    val request: Request,
-    val target: Target,
-    val priority: RequestPriority,
-    val job: Job
-)
 
 class Engine(
     private val activeResources: ActiveResources,
@@ -199,7 +189,7 @@ class Engine(
                         BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
                     }
                 val decodeTime = System.currentTimeMillis() - decodeStart
-                
+
                 // 🕐 Transform lại (nếu có) - skip during fast scroll for better performance
                 var transformTime: Long? = null
                 if (req.transformations.isNotEmpty() && !isFastScrolling) {
@@ -240,7 +230,12 @@ class Engine(
                 )
                 return
             } catch (e: Exception) {
-                ImageLoaderLogger.e(TAG, "Disk cache decode failed for: ${req.url}", e, LogCategory.CACHE)
+                ImageLoaderLogger.e(
+                    TAG,
+                    "Disk cache decode failed for: ${req.url}",
+                    e,
+                    LogCategory.CACHE
+                )
             }
         }
 
@@ -314,6 +309,7 @@ class Engine(
                 is CancellationException -> {
                     // Silently ignore cancellations
                 }
+
                 else -> {
                     ImageLoaderLogger.log(
                         ImageLoadLog(

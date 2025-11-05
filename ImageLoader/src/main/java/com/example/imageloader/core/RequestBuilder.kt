@@ -7,6 +7,7 @@ import android.widget.ImageView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.core.graphics.toColorInt
+import com.example.imageloader.core.enums.RequestPriority
 import com.example.imageloader.target.ImageViewTarget
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.imageloader.transformation.Transformation
