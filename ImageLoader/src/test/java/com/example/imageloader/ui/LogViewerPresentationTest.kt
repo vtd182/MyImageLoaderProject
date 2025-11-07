@@ -91,8 +91,7 @@ class LogViewerPresentationTest {
             fetchTimeMs = 12,
             decodeTimeMs = 23,
             transformTimeMs = 34,
-            totalTimeMs = 45,
-            isFastScrolling = true
+            totalTimeMs = 45
         )
 
         val model = mapper.map(log)
@@ -102,7 +101,6 @@ class LogViewerPresentationTest {
         assertEquals("45ms", model.totalText)
         assertTrue(model.timingsContainerVisible)
         assertEquals("Fetch: 12ms | Decode: 23ms | Transform: 34ms", model.timingsText)
-        assertTrue(model.showFastScroll)
         assertEquals(log.url, model.urlText)
         assertNull(model.errorText)
         assertTrue(model.showOpenUrlButton)
@@ -127,7 +125,6 @@ class LogViewerPresentationTest {
         assertEquals("60ms", model.totalText)
         assertFalse(model.timingsContainerVisible)
         assertNull(model.timingsText)
-        assertFalse(model.showFastScroll)
         assertEquals("Error: Boom", model.errorText)
         assertFalse(model.showOpenUrlButton)
         assertNull(model.urlToOpen)
@@ -153,7 +150,6 @@ class LogViewerPresentationTest {
         assertEquals("ERROR", model.totalText)
         assertFalse(model.timingsContainerVisible)
         assertNull(model.timingsText)
-        assertFalse(model.showFastScroll)
         assertEquals("Something happened", model.urlText)
         assertEquals("IllegalStateException: Bad", model.errorText)
         assertFalse(model.showOpenUrlButton)

@@ -119,13 +119,7 @@ class EngineTest {
         verify(memoryCache).remove(anyString())
     }
 
-    @Test
-    fun `setFastScrolling should toggle flag and reset after delay`() = runTest {
-        engine.setFastScrolling(true)
-        val fastScrollField = Engine::class.java.getDeclaredField("isFastScrolling")
-        fastScrollField.isAccessible = true
-        assertTrue(fastScrollField.getBoolean(engine))
-    }
+
 
     @Test
     fun `md5 helper should produce deterministic output`() {
@@ -144,15 +138,6 @@ class EngineTest {
     }
 
 
-    @Test
-    fun `setFastScrolling should cancel previous job if called again`() = runTest {
-        engine.setFastScrolling(true)
-        val jobField =
-            Engine::class.java.getDeclaredField("fastScrollJob").apply { isAccessible = true }
-        val firstJob = jobField.get(engine)
-        engine.setFastScrolling(true)
-        val secondJob = jobField.get(engine)
-        assertTrue(firstJob != secondJob)
-    }
+
 
 }

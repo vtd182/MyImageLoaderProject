@@ -18,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
@@ -40,10 +39,6 @@ class Engine(
     private val normalPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
     private val lowPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
 
-    @Volatile
-    private var isFastScrolling = false
-    private var fastScrollJob: Job? = null
-
     init {
         activeResources.setOnResourceReleased { key, resource ->
             val bitmap = resource.getBitmap()
@@ -57,6 +52,8 @@ class Engine(
         startPriorityWorkers()
     }
 
+
+    // need comment
     private fun startPriorityWorkers() {
         repeat(2) {
             engineScope.launch {
@@ -71,9 +68,6 @@ class Engine(
         engineScope.launch {
             for (prioritizedReq in normalPriorityQueue) {
                 if (!prioritizedReq.job.isCancelled) {
-                    if (isFastScrolling) {
-                        delay(50)
-                    }
                     executeLoad(prioritizedReq.request, prioritizedReq.target)
                 }
             }
@@ -82,25 +76,12 @@ class Engine(
         engineScope.launch {
             for (prioritizedReq in lowPriorityQueue) {
                 if (!prioritizedReq.job.isCancelled) {
-                    if (isFastScrolling) {
-                        delay(100)
-                    }
                     executeLoad(prioritizedReq.request, prioritizedReq.target)
                 }
             }
         }
     }
 
-    fun setFastScrolling(isFast: Boolean) {
-        isFastScrolling = isFast
-        if (isFast) {
-            fastScrollJob?.cancel()
-            fastScrollJob = engineScope.launch {
-                delay(300)
-                isFastScrolling = false
-            }
-        }
-    }
 
     fun checkMemoryCache(req: Request, target: Target): Boolean {
         val key = buildKey(req)
@@ -180,19 +161,15 @@ class Engine(
         // 3️⃣ Disk Cache (raw bytes) → decode + transform lại
         diskCache.get(dataKey)?.let { bytes ->
             try {
-                // 🕐 Decode (skip if fast scrolling and low quality is acceptable)
+                // 🕐 Decode
                 val decodeStart = System.currentTimeMillis()
                 var bitmap =
-                    if (isFastScrolling && req.resizeWidth != null && req.resizeHeight != null) {
-                        BitmapDecoder.decode(bytes, req.resizeWidth * 2, req.resizeHeight * 2)
-                    } else {
-                        BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
-                    }
+                    BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
                 val decodeTime = System.currentTimeMillis() - decodeStart
 
-                // 🕐 Transform lại (nếu có) - skip during fast scroll for better performance
+                // 🕐 Transform lại (nếu có)
                 var transformTime: Long? = null
-                if (req.transformations.isNotEmpty() && !isFastScrolling) {
+                if (req.transformations.isNotEmpty()) {
                     val t = measureTimeMillis {
                         bitmap = withContext(Dispatchers.Default) {
                             req.transformations.fold(bitmap) { bmp, transform ->
@@ -224,8 +201,7 @@ class Engine(
                         decodeTimeMs = decodeTime,
                         transformTimeMs = transformTime,
                         totalTimeMs = totalTime,
-                        transformCount = req.transformations.size,
-                        isFastScrolling = isFastScrolling
+                        transformCount = req.transformations.size
                     )
                 )
                 return
@@ -248,19 +224,14 @@ class Engine(
             val contentType = result.contentType
             val fetchElapsed = System.currentTimeMillis() - fetchStart
 
-            // 🕐 Decode (optimized for fast scroll)
+            // 🕐 Decode
             val decodeStart = System.currentTimeMillis()
-            var bitmap =
-                if (isFastScrolling && req.resizeWidth != null && req.resizeHeight != null) {
-                    BitmapDecoder.decode(bytes, req.resizeWidth * 2, req.resizeHeight * 2)
-                } else {
-                    BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
-                }
+            var bitmap = BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
             val decodeTime = System.currentTimeMillis() - decodeStart
 
-            // 🕐 Transform (skip during fast scroll)
+            // 🕐 Transform
             var transformTime: Long? = null
-            if (req.transformations.isNotEmpty() && !isFastScrolling) {
+            if (req.transformations.isNotEmpty()) {
                 val t = measureTimeMillis {
                     bitmap = withContext(Dispatchers.Default) {
                         req.transformations.fold(bitmap) { bmp, transform ->
@@ -300,8 +271,7 @@ class Engine(
                     transformTimeMs = transformTime,
                     cacheWriteTimeMs = cacheTime,
                     totalTimeMs = totalTime,
-                    transformCount = req.transformations.size,
-                    isFastScrolling = isFastScrolling
+                    transformCount = req.transformations.size
                 )
             )
         } catch (e: Exception) {
@@ -343,8 +313,6 @@ class Engine(
             if (req.transformations.isNotEmpty()) {
                 append("#transforms=${req.transformations.joinToString(";") { it.key() }}")
             }
-            append("#useMemory=${req.useMemoryCache}")
-            append("#useDisk=${req.useDiskCache}")
         }
         return rawKey.md5()
     }
@@ -354,8 +322,6 @@ class Engine(
             append(req.url)
             if (req.resizeWidth != null && req.resizeHeight != null)
                 append("#resize=${req.resizeWidth}x${req.resizeHeight}")
-            append("#useMemory=${req.useMemoryCache}")
-            append("#useDisk=${req.useDiskCache}")
         }
         return rawKey.md5()
     }

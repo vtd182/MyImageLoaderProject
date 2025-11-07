@@ -63,22 +63,12 @@
 
             <TextView
                 android:id="@+id/txtTimings"
-                android:layout_width="0dp"
-                android:layout_weight="1"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Fetch: 120ms | Decode: 80ms | Transform: 45ms"
                 android:textSize="10sp"
                 android:textColor="#616161"
                 android:fontFamily="monospace" />
-
-            <TextView
-                android:id="@+id/txtFastScroll"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⚡"
-                android:textSize="12sp"
-                android:visibility="gone"
-                android:layout_marginStart="4dp" />
         </LinearLayout>
 
         <TextView

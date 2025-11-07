@@ -179,8 +179,7 @@ class ImageLoaderLoggerTest {
         fetchTimeMs: Long? = 10L,
         decodeTimeMs: Long? = 20L,
         transformTimeMs: Long? = 20L,
-        error: String? = null,
-        isFastScrolling: Boolean = false
+        error: String? = null
     ) = ImageLoadLog(
         timestamp = timestamp,
         url = "https://example.com/image.jpg",
@@ -189,8 +188,7 @@ class ImageLoaderLoggerTest {
         fetchTimeMs = fetchTimeMs,
         decodeTimeMs = decodeTimeMs,
         transformTimeMs = transformTimeMs,
-        error = error,
-        isFastScrolling = isFastScrolling
+        error = error
     )
 
     private fun createSampleMessageLog(

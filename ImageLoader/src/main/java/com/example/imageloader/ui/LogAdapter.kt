@@ -72,7 +72,6 @@ internal class LogAdapter(
         private val txtLogTotal: TextView = view.findViewById(R.id.txtLogTotal)
         private val layoutTimings: View = view.findViewById(R.id.layoutTimings)
         private val txtTimings: TextView = view.findViewById(R.id.txtTimings)
-        private val txtFastScroll: TextView = view.findViewById(R.id.txtFastScroll)
         private val txtLogUrl: TextView = view.findViewById(R.id.txtLogUrl)
         private val txtLogError: TextView = view.findViewById(R.id.txtLogError)
         private val btnOpenUrl: MaterialButton = view.findViewById(R.id.btnOpenUrl)
@@ -86,7 +85,6 @@ internal class LogAdapter(
                 if (model.timingsContainerVisible) View.VISIBLE else View.GONE
             txtTimings.text = model.timingsText
 
-            txtFastScroll.visibility = if (model.showFastScroll) View.VISIBLE else View.GONE
             txtLogUrl.text = model.urlText
 
             val hasError = model.errorText != null

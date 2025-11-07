@@ -108,7 +108,6 @@ class LogAdapterTest {
             decodeTimeMs = 20,
             transformTimeMs = 30,
             totalTimeMs = 40,
-            isFastScrolling = true,
             error = error
         )
     }

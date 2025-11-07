@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.widget.ImageView
 import androidx.core.graphics.drawable.RoundedBitmapDrawable
+import com.example.imageloader.core.enums.RequestPriority
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull

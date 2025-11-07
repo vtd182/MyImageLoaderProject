@@ -85,7 +85,6 @@ data class ImageLoadLog(
     val cacheWriteTimeMs: Long? = null,
     val totalTimeMs: Long,
     val transformCount: Int = 0,
-    val isFastScrolling: Boolean = false,
     val error: String? = null
 ) : LogEntry(
     timestamp = timestamp,
@@ -108,7 +107,6 @@ data class ImageLoadLog(
                 append(" | Transform: ${transformTimeMs}ms ($transformCount)")
             }
             if (cacheWriteTimeMs != null) append(" | Cache: ${cacheWriteTimeMs}ms")
-            if (isFastScrolling) append(" [FAST_SCROLL]")
             
             append("\n   URL: $url")
             

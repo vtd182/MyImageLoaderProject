@@ -8,15 +8,17 @@ import com.example.imageloader.core.abstract.BitmapPool
 object BitmapDecoder {
     private var bitmapPool: BitmapPool? = null
     private var useBitmapPool: Boolean = false
-    
+
     fun setBitmapPool(pool: BitmapPool) {
         bitmapPool = pool
     }
-    
+
     fun setUseBitmapPool(enabled: Boolean) {
         useBitmapPool = enabled
     }
-    
+
+
+    // noted for try-catch
     fun decode(bytes: ByteArray, reqW: Int, reqH: Int): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -28,12 +30,13 @@ object BitmapDecoder {
         val opts = BitmapFactory.Options().apply {
             inSampleSize = sample
             inMutable = true
-            
+
             // Try to reuse bitmap from pool if enabled
             if (useBitmapPool) {
-                bitmapPool?.get(decodedWidth, decodedHeight, Bitmap.Config.ARGB_8888)?.let { poolBitmap ->
-                    inBitmap = poolBitmap
-                }
+                bitmapPool?.get(decodedWidth, decodedHeight, Bitmap.Config.ARGB_8888)
+                    ?.let { poolBitmap ->
+                        inBitmap = poolBitmap
+                    }
             }
         }
 
