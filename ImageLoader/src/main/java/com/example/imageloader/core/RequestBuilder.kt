@@ -12,6 +12,35 @@ import com.example.imageloader.target.ImageViewTarget
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.imageloader.transformation.Transformation
 
+/**
+ * RequestBuilder - Builder pattern để config và execute image load request.
+ *
+ * Cung cấp fluent API để:
+ * - Config URL, resize, transformations
+ * - Set placeholder, error drawable
+ * - Control caching behavior
+ * - Set priority cho request
+ * - Execute request vào ImageView
+ *
+ * ## Usage Example:
+ * ```kotlin
+ * ImageLoader.with(context)
+ *     .load("https://example.com/image.jpg")
+ *     .resize(500, 500)
+ *     .transform(CenterCropTransformation(), RoundedCornersTransformation(16f))
+ *     .placeholder("#E0E0E0")
+ *     .error(R.drawable.error_placeholder)
+ *     .priority(RequestPriority.HIGH)
+ *     .enableShimmer()
+ *     .into(imageView)
+ * ```
+ *
+ * ## Thread-safety:
+ * RequestBuilder là mutable và không thread-safe.
+ * Mỗi request nên có builder riêng.
+ *
+ * @param engine Engine instance để execute request
+ */
 class RequestBuilder(
     private val engine: Engine,
 ) {
@@ -29,27 +58,78 @@ class RequestBuilder(
     private var priority: RequestPriority = RequestPriority.NORMAL
     private val transformations = mutableListOf<Transformation>()
 
+    /**
+     * Thêm transformations để áp dụng lên bitmap.
+     * Transformations sẽ được apply tuần tự theo thứ tự add.
+     *
+     * @param transformations Vararg của Transformation objects
+     * @return Builder để chain calls
+     */
     fun transform(vararg transformations: Transformation): RequestBuilder {
         this.transformations.addAll(transformations)
         return this
     }
 
+    /**
+     * Set URL của ảnh cần load.
+     *
+     * @param url URL của ảnh (http/https)
+     * @return Builder để chain calls
+     */
     fun load(url: String): RequestBuilder {
         this.url = url; return this
     }
 
+    /**
+     * Set kích thước để decode ảnh (downsampling).
+     * Giúp tiết kiệm RAM khi load ảnh lớn.
+     *
+     * @param width Target width
+     * @param height Target height
+     * @return Builder để chain calls
+     */
     fun resize(width: Int, height: Int): RequestBuilder {
         resizeWidth = width; resizeHeight = height; return this
     }
 
+    /**
+     * Skip Memory Cache - ảnh sẽ không được cache trong RAM.
+     * Use case: Ảnh dynamic, thay đổi thường xuyên.
+     *
+     * @return Builder để chain calls
+     */
     fun skipMemoryCache(): RequestBuilder {
         useMemoryCache = false; return this
     }
 
+    /**
+     * Skip Disk Cache - ảnh sẽ không được cache trên disk.
+     * Use case: Ảnh nhạy cảm, không muốn persist.
+     *
+     * @return Builder để chain calls
+     */
     fun skipDiskCache(): RequestBuilder {
         useDiskCache = false; return this
     }
 
+    /**
+     * Execute request và load ảnh vào ImageView.
+     *
+     * ## Flow:
+     * 1. Build Request object từ builder config
+     * 2. Create ImageViewTarget
+     * 3. Apply placeholder
+     * 4. Check memory cache (sync)
+     * 5. Nếu miss → load từ disk/network (async)
+     * 6. Track request với RequestManager
+     *
+     * ## Pause/Resume:
+     * - Nếu RequestManager đang paused (scroll fast) → request pending
+     * - Khi resume → request được execute
+     *
+     * @param imageView Target ImageView
+     * @throws IllegalArgumentException nếu URL không được set
+     */
     fun into(imageView: ImageView) {
         val request = Request(
             url ?: throw IllegalArgumentException("URL required"),
