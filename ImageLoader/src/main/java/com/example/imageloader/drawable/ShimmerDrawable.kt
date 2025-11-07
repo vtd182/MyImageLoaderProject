@@ -13,14 +13,95 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 
+/**
+ * ShimmerDrawable - Custom Drawable hiển thị shimmer effect cho loading state.
+ *
+ * ## Mục đích:
+ * Tạo placeholder animated đẹp mắt khi đang load ảnh:
+ * - Shimmer sweep animation (hiệu ứng quét sáng)
+ * - Màu adaptive theo dominant color của ảnh
+ * - Support rounded corners
+ * - Better UX hơn static placeholder hoặc spinner
+ *
+ * ## Shimmer Animation:
+ * ```
+ * [Base] → [Light] → [Lighter] → [Light] → [Base]
+ *   ↓         ↓          ↓          ↓         ↓
+ * Linear gradient quét từ trái sang phải (1.5s loop)
+ * ```
+ *
+ * ## Color Strategy:
+ *
+ * ### With base color (từ dominant color extraction):
+ * ```
+ * Base color: #E0E0E0
+ * → Lighten 20%: #F0F0F0
+ * → Lighten 40%: #F8F8F8
+ * → Gradient: [Base, Light, Lighter, Light, Base]
+ * → Smooth shimmer effect
+ * ```
+ *
+ * ### Without base color (default):
+ * ```
+ * Gray gradient: [#E0E0E0, #F5F5F5, #E0E0E0]
+ * → Simple 3-color shimmer
+ * ```
+ *
+ * ## Technical Details:
+ * - **LinearGradient**: Horizontal gradient với 3-5 colors
+ * - **Matrix transform**: Translate gradient để tạo animation
+ * - **ValueAnimator**: 0.0 → 1.0 over 1.5s, infinite repeat
+ * - **Canvas clipping**: Support rounded corners với Path
+ *
+ * ## Performance:
+ * - Lightweight: Chỉ redraw khi animate
+ * - Hardware accelerated: Canvas operations optimized
+ * - 60 FPS smooth animation
+ *
+ * ## Usage:
+ * ```kotlin
+ * val shimmer = ShimmerDrawable(
+ *     baseColor = dominantColor, // Optional
+ *     cornerRadius = 16f          // Match image corners
+ * )
+ * imageView.setImageDrawable(shimmer)
+ * shimmer.start() // Start animation
+ * 
+ * // Later, when image loaded:
+ * shimmer.stop()
+ * imageView.setImageBitmap(bitmap)
+ * ```
+ *
+ * @param baseColor Optional base color để generate gradient (từ dominant color)
+ * @param cornerRadius Border radius cho rounded shimmer (match với ảnh)
+ *
+ * @see com.example.imageloader.target.ImageViewTarget
+ * @see com.example.imageloader.decode.BitmapDecoder.extractDominantColor
+ */
 class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 0f) : Drawable() {
+    /** Paint cho shimmer gradient */
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    
+    /** Matrix để transform gradient (tạo animation) */
     private val matrix = Matrix()
+    
+    /** ValueAnimator điều khiển shimmer sweep */
     private var animator: ValueAnimator? = null
+    
+    /** Current translation X (0.0 - 1.0) */
     private var translateX = 0f
+    
+    /** Path cho rounded corners clipping */
     private val path = Path()
+    
+    /** RectF helper cho rounded rect */
     private val rectF = RectF()
     
+    /**
+     * Shimmer gradient colors.
+     * - Nếu có baseColor: 5 colors (smooth gradient)
+     * - Nếu không: 3 colors (simple gray gradient)
+     */
     private val shimmerColors: IntArray = if (baseColor != null) {
         val lighter = lightenColor(baseColor, 0.2f)
         val evenLighter = lightenColor(baseColor, 0.4f)
@@ -33,6 +114,18 @@ class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 
         )
     }
     
+    /**
+     * Lighten một color theo factor (0.0 - 1.0).
+     * 
+     * ## Algorithm:
+     * ```
+     * newColor = baseColor + (255 - baseColor) * factor
+     * ```
+     * 
+     * @param color Base color (ARGB)
+     * @param factor Lighten factor (0.0 = no change, 1.0 = white)
+     * @return Lightened color
+     */
     private fun lightenColor(color: Int, factor: Float): Int {
         val red = Color.red(color)
         val green = Color.green(color)
@@ -105,10 +198,18 @@ class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 
     
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     
+    /**
+     * Start shimmer animation.
+     * Bắt đầu ValueAnimator để sweep gradient.
+     */
     fun start() {
         animator?.start()
     }
     
+    /**
+     * Stop shimmer animation.
+     * Dừng và cancel animator để save CPU/battery.
+     */
     fun stop() {
         animator?.cancel()
     }

@@ -51,7 +51,7 @@ import com.example.imageloader.logger.LogCategory
  *
  * Kết quả: leak bộ nhớ hoặc crash.
  *
- * ✅ Giải pháp đúng:
+ * Giải pháp đúng:
  *
  * ```
  * imageView.doOnAttach {
