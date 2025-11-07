@@ -4,10 +4,18 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * LogLevel - Mức độ log tương ứng với Android Log levels.
+ */
 enum class LogLevel {
     VERBOSE, DEBUG, INFO, WARNING, ERROR
 }
 
+/**
+ * LogCategory - Category để phân loại logs theo component.
+ *
+ * Giúp filter và analyze logs theo từng module.
+ */
 enum class LogCategory(val displayName: String) {
     ENGINE("Engine"),
     CACHE("Cache"),
@@ -18,12 +26,37 @@ enum class LogCategory(val displayName: String) {
     GENERAL("General");
 }
 
+/**
+ * LogEntry - Base sealed class cho tất cả log entries.
+ *
+ * ## Hierarchy:
+ * ```
+ * LogEntry (sealed)
+ * ├── MessageLog: General text messages
+ * └── ImageLoadLog: Image load events với timing details
+ * ```
+ *
+ * ## Properties:
+ * - **timestamp**: Thời điểm log được tạo (ms)
+ * - **level**: Mức độ nghiêm trọng
+ * - **category**: Phân loại theo component
+ *
+ * @see MessageLog
+ * @see ImageLoadLog
+ */
 sealed class LogEntry(
     open val timestamp: Long = System.currentTimeMillis(),
     open val level: LogLevel,
     open val category: LogCategory
 ) {
+    /**
+     * Format log để hiển thị trong UI (với icons, multiline).
+     */
     abstract fun toDisplayString(): String
+    
+    /**
+     * Format log cho Android Logcat (single line, concise).
+     */
     abstract fun toLogcatString(): String
     
     protected fun formatTime(timestamp: Long): String {
@@ -42,6 +75,25 @@ sealed class LogEntry(
     }
 }
 
+/**
+ * MessageLog - Log entry cho general text messages.
+ *
+ * ## Use cases:
+ * - Debug messages từ components
+ * - Warnings và errors với exceptions
+ * - General flow tracking
+ *
+ * ## Example:
+ * ```kotlin
+ * MessageLog(
+ *     level = LogLevel.ERROR,
+ *     category = LogCategory.NETWORK,
+ *     tag = "HttpFetcher",
+ *     message = "Failed to fetch image",
+ *     throwable = IOException("Connection timeout")
+ * )
+ * ```
+ */
 data class MessageLog(
     override val timestamp: Long = System.currentTimeMillis(),
     override val level: LogLevel,
@@ -75,6 +127,46 @@ data class MessageLog(
     }
 }
 
+/**
+ * ImageLoadLog - Log entry cho image load events với detailed timing breakdown.
+ *
+ * ## Purpose:
+ * Track và measure performance của image loading operations.
+ *
+ * ## Timing Fields:
+ * - **fetchTimeMs**: Network fetch time (chỉ có khi source = NETWORK)
+ * - **decodeTimeMs**: Bitmap decode time
+ * - **transformTimeMs**: Transformations time (nếu có)
+ * - **cacheWriteTimeMs**: Disk cache write time
+ * - **totalTimeMs**: Total time từ start đến finish
+ *
+ * ## Use cases:
+ * - Performance monitoring
+ * - Cache hit rate analysis
+ * - Bottleneck identification
+ * - Error tracking
+ *
+ * ## Example:
+ * ```kotlin
+ * // Network load
+ * ImageLoadLog(
+ *     url = "https://example.com/photo.jpg",
+ *     source = LogSource.NETWORK,
+ *     fetchTimeMs = 300,
+ *     decodeTimeMs = 50,
+ *     transformTimeMs = 20,
+ *     totalTimeMs = 370,
+ *     transformCount = 1
+ * )
+ *
+ * // Memory cache hit
+ * ImageLoadLog(
+ *     url = "https://example.com/photo.jpg",
+ *     source = LogSource.MEMORY_CACHE,
+ *     totalTimeMs = 2  // Very fast!
+ * )
+ * ```
+ */
 data class ImageLoadLog(
     override val timestamp: Long = System.currentTimeMillis(),
     val url: String,
@@ -131,6 +223,15 @@ data class ImageLoadLog(
     }
 }
 
+/**
+ * LogSource - Nguồn mà image được load từ.
+ *
+ * Sắp xếp theo tốc độ (nhanh → chậm):
+ * 1. ACTIVE_CACHE: Currently in use (~0-2ms)
+ * 2. MEMORY_CACHE: LRU cache (~1-5ms)
+ * 3. DISK_CACHE: File cache (~20-100ms)
+ * 4. NETWORK: HTTP fetch (~100-1000ms)
+ */
 enum class LogSource {
     ACTIVE_CACHE,
     MEMORY_CACHE,

@@ -10,6 +10,70 @@ import com.example.imageloader.logger.LogCategory
 import com.example.imageloader.logger.LogEntry
 import com.google.android.material.button.MaterialButton
 
+/**
+ * LogAdapter - RecyclerView adapter cho log entries display.
+ *
+ * ## Responsibilities:
+ * - Quản lý list of logs (all + filtered)
+ * - Filter logs theo categories
+ * - Real-time insert logs mới at position 0
+ * - Bind LogEntry data vào ViewHolder
+ * - Handle "Open URL" action
+ *
+ * ## Architecture:
+ * ```
+ * LogAdapter
+ *     ↓
+ * ├─ allLogs: MutableList<LogEntry>      (full dataset)
+ * ├─ filteredLogs: MutableList<LogEntry> (displayed in UI)
+ * ├─ LogEntryFilter                       (filtering logic)
+ * ├─ LogEntryUiModelMapper               (LogEntry → UI model)
+ * └─ LogViewHolder                        (bind UI)
+ * ```
+ *
+ * ## Data Flow:
+ * ```
+ * ImageLoaderLogger.log()
+ *         ↓
+ * Activity listener callback
+ *         ↓
+ * adapter.addLog(log, selectedCategories)
+ *         ↓
+ * 1. Add to allLogs at position 0
+ * 2. Check if log passes filter
+ * 3. If yes: Add to filteredLogs + notifyItemInserted(0)
+ *         ↓
+ * onBindViewHolder()
+ *         ↓
+ * 1. Get log from filteredLogs[position]
+ * 2. Map to UI model
+ * 3. Bind to ViewHolder
+ * ```
+ *
+ * ## Filtering:
+ * - User selects categories in Filter Dialog
+ * - Activity calls `filterByCategories(selectedCategories)`
+ * - Adapter rebuilds filteredLogs + notifyDataSetChanged()
+ *
+ * ## Performance:
+ * - **Insert at 0**: O(1) for ArrayList prepend
+ * - **Filtering**: O(n) where n = allLogs.size (max 500)
+ * - **ViewHolder pattern**: Efficient view recycling
+ * - **No DiffUtil**: Simple insert, không cần sophisticated diff
+ *
+ * ## Testing:
+ * Adapter is `internal` và testable:
+ * - Constructor injection (filter, mapper, callback)
+ * - Snapshot methods: snapshotFilteredLogs(), snapshotAllLogs()
+ *
+ * @param logEntryFilter Filter logic (injectable for testing)
+ * @param uiModelMapper Mapper logic (injectable for testing)
+ * @param onOpenUrl Callback khi user tap "Open URL"
+ *
+ * @see LogViewerActivity
+ * @see LogEntryFilter
+ * @see LogEntryUiModelMapper
+ */
 internal class LogAdapter(
     private val logEntryFilter: LogEntryFilter = LogEntryFilter(),
     private val uiModelMapper: LogEntryUiModelMapper = LogEntryUiModelMapper(),
@@ -66,6 +130,19 @@ internal class LogAdapter(
 
     internal fun snapshotAllLogs(): List<LogEntry> = allLogs.toList()
 
+    /**
+     * LogViewHolder - ViewHolder cho log entry item.
+     *
+     * ## UI Components:
+     * - txtLogTime: Timestamp (HH:mm:ss.SSS)
+     * - txtLogSource: Source label với icon
+     * - txtLogTotal: Total time hoặc log level
+     * - layoutTimings: Container cho timing breakdown
+     * - txtTimings: Fetch/Decode/Transform times
+     * - txtLogUrl: URL hoặc message
+     * - txtLogError: Error text (nếu có)
+     * - btnOpenUrl: Button để open URL trong browser
+     */
     class LogViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         private val txtLogTime: TextView = view.findViewById(R.id.txtLogTime)
         private val txtLogSource: TextView = view.findViewById(R.id.txtLogSource)
@@ -76,6 +153,12 @@ internal class LogAdapter(
         private val txtLogError: TextView = view.findViewById(R.id.txtLogError)
         private val btnOpenUrl: MaterialButton = view.findViewById(R.id.btnOpenUrl)
 
+        /**
+         * Bind UI model vào views.
+         *
+         * @param model UI model từ LogEntryUiModelMapper
+         * @param onOpenUrl Callback khi tap button
+         */
         fun bind(model: LogEntryUiModel, onOpenUrl: (String) -> Unit) {
             txtLogTime.text = model.timeText
             txtLogSource.text = model.sourceText

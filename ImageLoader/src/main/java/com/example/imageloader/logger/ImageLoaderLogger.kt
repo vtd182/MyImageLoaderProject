@@ -3,6 +3,84 @@ package com.example.imageloader.logger
 import android.util.Log
 import java.util.concurrent.ConcurrentLinkedQueue
 
+/**
+ * ImageLoaderLogger - Centralized logging system cho ImageLoader library.
+ *
+ * ## Mục đích:
+ * - Log tất cả image load events (network, cache hits, errors)
+ * - Log general messages từ các components
+ * - Provide in-memory log buffer cho debugging UI
+ * - Real-time listener notifications
+ * - Performance metrics và statistics
+ *
+ * ## Architecture:
+ * ```
+ * Components → ImageLoaderLogger → [Memory Buffer] → Logcat
+ *                                  ↓
+ *                              Listeners (UI)
+ * ```
+ *
+ * ## Features:
+ *
+ * ### 1. Dual Logging:
+ * - **Logcat**: Standard Android logging (filterable by tag)
+ * - **Memory Buffer**: Last 500 logs for in-app viewer
+ *
+ * ### 2. Log Categories:
+ * - CACHE: Cache operations (hit/miss/put)
+ * - NETWORK: HTTP fetching
+ * - DECODE: Bitmap decoding
+ * - TRANSFORM: Transformations
+ * - GENERAL: Other messages
+ *
+ * ### 3. Log Levels:
+ * - VERBOSE: Detailed flow information
+ * - DEBUG: Development info
+ * - INFO: Important events
+ * - WARNING: Potential issues
+ * - ERROR: Failures
+ *
+ * ### 4. Real-time Listeners:
+ * UI components có thể đăng ký để nhận logs real-time:
+ * ```kotlin
+ * ImageLoaderLogger.addListener { logEntry ->
+ *     when (logEntry) {
+ *         is ImageLoadLog -> updateImageStats(logEntry)
+ *         is MessageLog -> appendToLogView(logEntry)
+ *     }
+ * }
+ * ```
+ *
+ * ## Usage Examples:
+ *
+ * ### General logging:
+ * ```kotlin
+ * ImageLoaderLogger.d("Engine", "Starting image load: $url", LogCategory.NETWORK)
+ * ImageLoaderLogger.e("Decoder", "Decode failed", throwable, LogCategory.DECODE)
+ * ```
+ *
+ * ### Image load logging:
+ * ```kotlin
+ * val log = ImageLoadLog(
+ *     url = url,
+ *     source = LogSource.NETWORK,
+ *     totalTimeMs = 450,
+ *     fetchTimeMs = 300,
+ *     decodeTimeMs = 100,
+ *     transformTimeMs = 50
+ * )
+ * ImageLoaderLogger.log(log)
+ * ```
+ *
+ * ## Thread-safety:
+ * - ConcurrentLinkedQueue: Thread-safe buffer
+ * - synchronized(listeners): Safe listener operations
+ * - Multiple threads có thể log đồng thời
+ *
+ * @see com.example.imageloader.logger.LogEntry
+ * @see com.example.imageloader.logger.ImageLoadLog
+ * @see com.example.imageloader.logger.LogStats
+ */
 object ImageLoaderLogger {
     private const val TAG = "ImageLoaderLogger"
     private const val MAX_LOGS = 500
@@ -14,26 +92,44 @@ object ImageLoaderLogger {
     var jsonPhotoCount = 0
     var jsonCurrentPage = 0
 
+    /**
+     * Log một ImageLoadLog entry.
+     */
     fun log(log: ImageLoadLog) {
         logEntry(log)
     }
     
+    /**
+     * Log VERBOSE message.
+     */
     fun v(tag: String, message: String, category: LogCategory = LogCategory.GENERAL) {
         logEntry(MessageLog(level = LogLevel.VERBOSE, category = category, tag = tag, message = message))
     }
     
+    /**
+     * Log DEBUG message.
+     */
     fun d(tag: String, message: String, category: LogCategory = LogCategory.GENERAL) {
         logEntry(MessageLog(level = LogLevel.DEBUG, category = category, tag = tag, message = message))
     }
     
+    /**
+     * Log INFO message.
+     */
     fun i(tag: String, message: String, category: LogCategory = LogCategory.GENERAL) {
         logEntry(MessageLog(level = LogLevel.INFO, category = category, tag = tag, message = message))
     }
     
+    /**
+     * Log WARNING message với optional throwable.
+     */
     fun w(tag: String, message: String, throwable: Throwable? = null, category: LogCategory = LogCategory.GENERAL) {
         logEntry(MessageLog(level = LogLevel.WARNING, category = category, tag = tag, message = message, throwable = throwable))
     }
     
+    /**
+     * Log ERROR message với optional throwable.
+     */
     fun e(tag: String, message: String, throwable: Throwable? = null, category: LogCategory = LogCategory.GENERAL) {
         logEntry(MessageLog(level = LogLevel.ERROR, category = category, tag = tag, message = message, throwable = throwable))
     }
@@ -65,27 +161,57 @@ object ImageLoaderLogger {
         }
     }
 
+    /**
+     * Get tất cả logs trong memory buffer.
+     *
+     * @return Snapshot của logs (max 500 entries)
+     */
     fun getAllLogs(): List<LogEntry> {
         return logs.toList()
     }
 
+    /**
+     * Clear tất cả logs trong buffer.
+     */
     fun clear() {
         logs.clear()
         Log.d(TAG, "Logs cleared")
     }
 
+    /**
+     * Đăng ký listener để nhận log updates real-time.
+     * Listener sẽ được gọi mỗi khi có log mới.
+     *
+     * @param listener Callback nhận LogEntry
+     */
     fun addListener(listener: (LogEntry) -> Unit) {
         synchronized(listeners) {
             listeners.add(listener)
         }
     }
 
+    /**
+     * Hủy đăng ký listener.
+     *
+     * @param listener Listener cần remove
+     */
     fun removeListener(listener: (LogEntry) -> Unit) {
         synchronized(listeners) {
             listeners.remove(listener)
         }
     }
 
+    /**
+     * Calculate statistics từ logs hiện tại.
+     *
+     * ## Metrics:
+     * - Cache hit rates (active/memory/disk)
+     * - Average load times per source
+     * - Average fetch/decode/transform times
+     * - Error counts
+     *
+     * @return LogStats chứa metrics
+     */
     fun getLogStats(): LogStats {
         val imageLoadLogs = logs.filterIsInstance<ImageLoadLog>()
         val messageLogs = logs.filterIsInstance<MessageLog>()
@@ -123,6 +249,11 @@ object ImageLoaderLogger {
     }
 }
 
+/**
+ * LogStats - Statistics data class tổng hợp metrics từ logs.
+ *
+ * Chứa performance metrics và cache hit rates để phân tích hiệu suất.
+ */
 data class LogStats(
     val totalLogs: Int,
     val totalImageRequests: Int,
