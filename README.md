@@ -224,10 +224,9 @@ class Engine {
             }
         }
 
-        // 1 worker cho NORMAL priority (với fast scroll delay)
+        // 1 worker cho NORMAL priority
         engineScope.launch {
             for (request in normalPriorityQueue) {
-                if (isFastScrolling) delay(50)
                 executeLoad(request)
             }
         }
@@ -235,7 +234,6 @@ class Engine {
         // 1 worker cho LOW priority (preloading)
         engineScope.launch {
             for (request in lowPriorityQueue) {
-                if (isFastScrolling) delay(100)
                 executeLoad(request)
             }
         }
@@ -259,12 +257,6 @@ override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         .into(imageView)
 }
 ```
-
-**Fast Scrolling Optimization:**
-
-- Detect fast scroll → tạm dừng NORMAL và LOW requests
-- Chỉ xử lý HIGH priority (visible items)
-- Auto-resume sau 300ms không scroll
 
 ### 2.4 Lifecycle Awareness
 
@@ -455,7 +447,6 @@ data class ImageLoadLog(
     val cacheWriteTimeMs: Long? = null, // Disk write time
     val totalTimeMs: Long,              // Total request time
     val transformCount: Int = 0,
-    val isFastScrolling: Boolean = false,
     val error: String? = null
 )
 ```
@@ -1212,9 +1203,6 @@ class Engine(
     private val normalPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
     private val lowPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
 
-    @Volatile
-    private var isFastScrolling = false
-
     init {
         // Setup active → memory transition
         activeResources.setOnResourceReleased { key, resource ->
@@ -1244,25 +1232,19 @@ class Engine(
         engineScope.launch {
             for (prioritizedReq in normalPriorityQueue) {
                 if (!prioritizedReq.job.isCancelled) {
-                    if (isFastScrolling) delay(50) // Throttle
                     executeLoad(prioritizedReq.request, prioritizedReq.target)
                 }
             }
         }
 
-        // 1 worker for LOW priority  
+        // 1 worker for LOW priority
         engineScope.launch {
             for (prioritizedReq in lowPriorityQueue) {
                 if (!prioritizedReq.job.isCancelled) {
-                    if (isFastScrolling) delay(100) // Heavy throttle
                     executeLoad(prioritizedReq.request, prioritizedReq.target)
                 }
             }
         }
-    }
-
-    fun setFastScrolling(isFast: Boolean) {
-        isFastScrolling = isFast
     }
 
     fun checkMemoryCache(req: Request, target: Target): Boolean {
@@ -1375,7 +1357,6 @@ class Engine(
 
 - **Priority queuing**: 3 separate channels
 - **Coroutines**: Non-blocking I/O
-- **Fast scroll detection**: Throttling
 - **Error handling**: Retry logic
 - **Logging**: Performance tracking
 
@@ -2785,7 +2766,7 @@ Số liệu lấy từ `ImageLoader/build/reports/jacoco/jacocoTestReport/html/i
 - Các module thuần xử lý dữ liệu (cache, decode, fetcher, transformation, logger) có độ phủ tốt nhờ
   bộ test đơn vị tại `ImageLoader/src/test/java`.
 - Engine, RequestManager và lớp UI mẫu vẫn thiếu test (độ phủ <60%), nên ưu tiên bổ sung test xử lý
-  ưu tiên, fast scroll, retry và presenter/UI binding.
+  priority queues, retry logic và presenter/UI binding.
 - Có thể mở báo cáo HTML để xem chi tiết từng lớp và dòng chưa được bao phủ.
 
 ---
