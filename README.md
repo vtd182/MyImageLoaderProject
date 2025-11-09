@@ -19,8 +19,7 @@
 
 ### 1.1 Tổng Quan
 
-Image Loader là một thư viện tải và cache ảnh được phát triển cho nền tảng Android, lấy cảm hứng từ
-các thư viện nổi tiếng như **Glide** và **Picasso** nhưng được xây dựng từ đầu với mục tiêu:
+Image Loader là một thư viện tải và cache ảnh được phát triển cho nền tảng Android với các mục tiêu
 
 - Tối ưu hóa hiệu năng
 - Dễ dàng debug và monitoring
@@ -995,8 +994,10 @@ Key = MD5("https://example.com/photo.jpg#resize=800x800#transforms=CenterCropRou
 #### **Cache Invalidation (Summary)**
 
 - **MemoryCache**: Dựa vào `LruCache` → eviction auto; bitmap evicted được trả về `BitmapPool`.
-- **ActiveResources**: Khi `EngineResource.release()` làm refCount = 0 → callback chuyển xuống Memory cache.
-- **DiskCache**: `trimCacheAsync()` chạy nền để xóa file cũ nhất theo `lastModified`, `clear()` dùng khi người dùng chọn “Clear cache”.
+- **ActiveResources**: Khi `EngineResource.release()` làm refCount = 0 → callback chuyển xuống
+  Memory cache.
+- **DiskCache**: `trimCacheAsync()` chạy nền để xóa file cũ nhất theo `lastModified`, `clear()` dùng
+  khi người dùng chọn “Clear cache”.
 
 ---
 
@@ -1021,8 +1022,10 @@ ImageLoader.with(context)
 
 #### **4.1.2 RequestBuilder (Fluent API)**
 
-- Quản lý toàn bộ cấu hình mutable (resize, transformations, priority, shimmer...) trước khi tạo `Request`.
-- `into(imageView)` sẽ apply placeholder, kiểm tra cache đồng bộ, nếu miss mới queue request vào engine.
+- Quản lý toàn bộ cấu hình mutable (resize, transformations, priority, shimmer...) trước khi tạo
+  `Request`.
+- `into(imageView)` sẽ apply placeholder, kiểm tra cache đồng bộ, nếu miss mới queue request vào
+  engine.
 - Kết hợp với `RequestManager` để pause/resume khi RecyclerView scroll.
 
 ```kotlin
@@ -1074,7 +1077,8 @@ fun release() {
 `ImageLoader/src/main/java/com/example/imageloader/cache/ActiveResources.kt`
 
 - Map `key → EngineResource` cho các bitmap đang xuất hiện trên UI (được acquire).
-- Khi `EngineResource.release()` gọi `resourceReleasedCallback`, cache sẽ move bitmap xuống `MemoryCache`.
+- Khi `EngineResource.release()` gọi `resourceReleasedCallback`, cache sẽ move bitmap xuống
+  `MemoryCache`.
 
 #### **4.2.2 MemoryCache (LRU)**
 
@@ -1097,8 +1101,10 @@ override fun entryRemoved(evicted: Boolean, key: String?, oldValue: Bitmap?, new
 `ImageLoader/src/main/java/com/example/imageloader/cache/DiskCache.kt`
 
 - Lưu raw bytes với phần mở rộng dựa trên `contentType`, chỉ ghi file mới khi chưa tồn tại.
-- Trước khi ghi, `ensureSizeInitialized()` cập nhật tổng size và `trimCacheAsync()` dọn file cũ nhất nếu vượt 150 MB mặc định.
-- Ghi dữ liệu theo pattern `temp → rename` để đảm bảo atomic write, nên nếu app crash giữa chừng cache vẫn không corrupt.
+- Trước khi ghi, `ensureSizeInitialized()` cập nhật tổng size và `trimCacheAsync()` dọn file cũ nhất
+  nếu vượt 150 MB mặc định.
+- Ghi dữ liệu theo pattern `temp → rename` để đảm bảo atomic write, nên nếu app crash giữa chừng
+  cache vẫn không corrupt.
 
 ```kotlin
 @Synchronized
@@ -1123,14 +1129,16 @@ fun put(key: String, data: ByteArray, contentType: String?): Boolean {
 }
 ```
 
-**File organization:** `key = MD5(dataKey)` kết hợp extension (`.jpg/.png/.webp/.avif/.dat`). Trimming dựa trên `lastModified` nên file ít dùng nhất bị xóa trước.
+**File organization:** `key = MD5(dataKey)` kết hợp extension (`.jpg/.png/.webp/.avif/.dat`).
+Trimming dựa trên `lastModified` nên file ít dùng nhất bị xóa trước.
 
 #### **4.2.4 LruBitmapPool**
 
 `ImageLoader/src/main/java/com/example/imageloader/core/LruBitmapPool.kt`
 
 - Lưu bitmap mutable trong `LinkedHashMap` (LRU) để tái sử dụng thông qua `BitmapFactory.inBitmap`.
-- `get()` ưu tiên exact match, nếu không tìm thấy sẽ lấy bitmap lớn hơn và `reconfigure()` về kích thước mới.
+- `get()` ưu tiên exact match, nếu không tìm thấy sẽ lấy bitmap lớn hơn và `reconfigure()` về kích
+  thước mới.
 - `put()` bỏ qua bitmap quá lớn (chiếm >50% pool) để tránh nghẽn.
 - `trimToSize()` recycle bớt khi vượt ngưỡng.
 
@@ -1177,7 +1185,10 @@ override suspend fun fetch(url: String): HttpResult {
                 connect()
             }.run {
                 if (responseCode != HttpURLConnection.HTTP_OK) error("HTTP $responseCode")
-                return HttpResult(inputStream.use { it.readBytes() }, contentType).also { disconnect() }
+                return HttpResult(
+                    inputStream.use { it.readBytes() },
+                    contentType
+                ).also { disconnect() }
             }
         }.onFailure {
             lastError = it
@@ -1192,8 +1203,10 @@ override suspend fun fetch(url: String): HttpResult {
 
 `ImageLoader/src/main/java/com/example/imageloader/decode/BitmapDecoder.kt`
 
-- Đọc bounds trước (`inJustDecodeBounds = true`) để tính `inSampleSize` → tránh decode bitmap quá lớn.
-- Khi `useBitmapPool` bật, truyền `inBitmap` từ pool để reuse memory; nếu `IllegalArgumentException` xảy ra thì retry không dùng pool.
+- Đọc bounds trước (`inJustDecodeBounds = true`) để tính `inSampleSize` → tránh decode bitmap quá
+  lớn.
+- Khi `useBitmapPool` bật, truyền `inBitmap` từ pool để reuse memory; nếu `IllegalArgumentException`
+  xảy ra thì retry không dùng pool.
 - Trích xuất dominant color cho placeholder thông qua `Palette` (dùng bản decode nhỏ 10×10).
 
 ```kotlin
@@ -1587,7 +1600,8 @@ object Injector {
 
 - Giữ map `preloadedPages` và song song `preloadJobs` để không tải trùng lặp.
 - Gọi `preloadPages(currentPage)` sẽ queue tối đa 3 trang kế tiếp trên `Dispatchers.IO`.
-- `cleanupOldPages()` drop mọi trang `< currentPage - 1` và hủy job tương ứng để hạn chế RAM/network.
+- `cleanupOldPages()` drop mọi trang `< currentPage - 1` và hủy job tương ứng để hạn chế
+  RAM/network.
 
 ```kotlin
 fun preloadPages(currentPage: Int) {
@@ -1606,8 +1620,10 @@ fun preloadPages(currentPage: Int) {
 
 **Preloading Strategy Highlights**
 
-1. Data-only caching: chỉ lưu `UnsplashPhoto` để `HomeViewModel` render ngay, ảnh thật vẫn do `ImageLoader` xử lý với priority thấp.
-2. `hasPreloadedPage()`/`getPreloadedPage()` giúp `loadMorePhotos()` đọc dữ liệu nóng; nếu miss thì fallback sang API.
+1. Data-only caching: chỉ lưu `UnsplashPhoto` để `HomeViewModel` render ngay, ảnh thật vẫn do
+   `ImageLoader` xử lý với priority thấp.
+2. `hasPreloadedPage()`/`getPreloadedPage()` giúp `loadMorePhotos()` đọc dữ liệu nóng; nếu miss thì
+   fallback sang API.
 3. `clear()` hủy mọi coroutine khi người dùng refresh hoặc ViewModel bị clear.
 
 ### 5.3 Data Layer
@@ -1632,16 +1648,18 @@ fun shouldRetry(error: AppError) = when (error) {
 
 **Retry Strategy Recap**
 
-1. Network errors: auto retry sau 3s nếu thiết bị đã online trở lại (`NetworkMonitor.isNetworkAvailable()` check trước khi gọi lại API).
-2. Rate limit: chờ `retryAfter` (default 60 s) rồi mới trigger `loadPhotos()` lần nữa.
-3. Server 503: retry sau 5 s; các HTTP khác hiển thị snackbar và chờ người dùng tương tác.
+1. Network errors: auto retry sau 3s nếu thiết bị đã online trở lại (
+   `NetworkMonitor.isNetworkAvailable()` check trước khi gọi lại API).
+2. Rate limit: chờ `retryAfter` (default 60 s) rồi mới trigger `loadPhotos()` lần nữa.
+3. Server 503: retry sau 5 s; các HTTP khác hiển thị snackbar và chờ người dùng tương tác.
 4. Unknown errors: không retry tự động để tránh vòng lặp vô hạn, chỉ hiển thị thông báo.
 
 #### **5.3.2 Network Monitoring**
 
 `app/src/main/java/com/example/myimageloaderproject/core/network/NetworkMonitor.kt`
 
-- Exposes a cold `Flow<NetworkStatus>` built via `callbackFlow` + `ConnectivityManager.NetworkCallback`.
+- Exposes a cold `Flow<NetworkStatus>` built via `callbackFlow` +
+  `ConnectivityManager.NetworkCallback`.
 - Emits `Available/Losing/Lost/Unavailable` states and deduplicates via `distinctUntilChanged()`.
 - Provides synchronous `isNetworkAvailable()` helper for ViewModel retry checks.
 
@@ -2018,8 +2036,6 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.palette:palette-ktx:1.0.0")
 
-    // Networking
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -2058,7 +2074,6 @@ dependencies {
     // Async / JSON
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.0")
-    implementation(libs.gson) // dùng cho JsonBackupManager
 
     // Networking util
     implementation(libs.volley) // placeholder utility, HttpClient dùng HttpURLConnection thuần
@@ -2073,9 +2088,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 ```
-
-**Lưu ý:** App module dùng **custom HttpClient** với `HttpURLConnection`. Gson vẫn được dùng cho
-backup JSON (`JsonBackupManager`), còn luồng chính parsing API sử dụng **Kotlinx Serialization**.
 
 ---
 
@@ -2105,4 +2117,3 @@ backup JSON (`JsonBackupManager`), còn luồng chính parsing API sử dụng *
 - [Unsplash API](https://unsplash.com/documentation)
 
 ---
-- Toàn bộ thao tác được `@Synchronized` để tránh race condition giữa worker threads và Main thread.
