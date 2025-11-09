@@ -992,46 +992,11 @@ Key = MD5("https://example.com/photo.jpg#resize=800x800#transforms=CenterCropRou
 - Ảnh cùng URL nhưng khác size/transform → cache riêng biệt
 - Tránh cache hit sai
 
-#### **Cache Invalidation**
+#### **Cache Invalidation (Summary)**
 
-**Memory Cache Eviction:**
-
-```kotlin
-// LruCache tự động evict theo LRU
-override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap) {
-    if (evicted && oldValue.isMutable && !oldValue.isRecycled) {
-        bitmapPool?.put(oldValue) // Return to pool
-    }
-}
-```
-
-**Disk Cache Cleanup:**
-
-```kotlin
-// Manual cleanup
-fun clearDiskCache() {
-    val cacheDir = File(context.externalCacheDir, "image_cache")
-    cacheDir.deleteRecursively()
-}
-
-// Size-based eviction (TODO)
-fun trimDiskCache(maxSizeBytes: Long) {
-    // Implement LRU for disk cache
-}
-```
-
-**Active Resources Cleanup:**
-
-```kotlin
-// Auto cleanup khi refCount = 0
-fun release() {
-    refCount--
-    if (refCount == 0) {
-        listener.onResourceReleased(key, this)
-        // Move to Memory Cache
-    }
-}
-```
+- **MemoryCache**: Dựa vào `LruCache` → eviction auto; bitmap evicted được trả về `BitmapPool`.
+- **ActiveResources**: Khi `EngineResource.release()` làm refCount = 0 → callback chuyển xuống Memory cache.
+- **DiskCache**: `trimCacheAsync()` chạy nền để xóa file cũ nhất theo `lastModified`, `clear()` dùng khi người dùng chọn “Clear cache”.
 
 ---
 
@@ -1041,724 +1006,145 @@ fun release() {
 
 #### **4.1.1 ImageLoader (Singleton)**
 
-Entry point của library, quản lý lifecycle của các components chính.
+`ImageLoader/src/main/java/com/example/imageloader/core/ImageLoader.kt`
+
+- Khởi tạo duy nhất engine + toàn bộ cache layers thông qua double-checked locking.
+- Tính toán kích thước `MemoryCache`/`BitmapPool` dựa trên device rồi bơm vào `Engine`.
+- Expose API `with(context)` trả về `RequestBuilder`.
 
 ```kotlin
-class ImageLoader private constructor(context: Context, useBitmapPool: Boolean) {
-    // Memory management
-    private val sizes = MemorySizeCalculator.calculate(context, useBitmapPool)
-    private val bitmapPool = LruBitmapPool(sizes.bitmapPoolSize.toLong())
-    private val memoryCache = MemoryCache(sizes.memoryCacheSize, bitmapPool)
-
-    // Cache layers
-    private val diskCache = DiskCache(context)
-    private val activeResources = ActiveResources()
-
-    // Network
-    private val fetcher = HttpFetcher()
-
-    // Core engine
-    val engine = Engine(activeResources, memoryCache, diskCache, fetcher, bitmapPool)
-
-    init {
-        BitmapDecoder.setBitmapPool(bitmapPool)
-        BitmapDecoder.setUseBitmapPool(useBitmapPool)
-    }
-
-    companion object {
-        @Volatile
-        private var INSTANCE: ImageLoader? = null
-
-        fun getInstance(context: Context, useBitmapPool: Boolean = false): ImageLoader {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: ImageLoader(context.applicationContext, useBitmapPool)
-                    .also { INSTANCE = it }
-            }
-        }
-
-        fun with(context: Context, useBitmapPool: Boolean = false): RequestBuilder {
-            return RequestBuilder(getInstance(context, useBitmapPool).engine)
-        }
-    }
-}
+ImageLoader.with(context)
+    .load(url)
+    .enableShimmer()
+    .into(imageView)
 ```
-
-**Key Responsibilities:**
-
-- **Singleton pattern**: Đảm bảo chỉ có 1 instance
-- **Dependency injection**: Inject dependencies vào Engine
-- **Configuration**: Setup bitmap pool, memory cache sizes
-- **Thread-safe initialization**: Double-checked locking
 
 #### **4.1.2 RequestBuilder (Fluent API)**
 
-Builder pattern để tạo requests với cú pháp dễ đọc.
+- Quản lý toàn bộ cấu hình mutable (resize, transformations, priority, shimmer...) trước khi tạo `Request`.
+- `into(imageView)` sẽ apply placeholder, kiểm tra cache đồng bộ, nếu miss mới queue request vào engine.
+- Kết hợp với `RequestManager` để pause/resume khi RecyclerView scroll.
 
 ```kotlin
-class RequestBuilder(private val engine: Engine) {
-    private var url: String? = null
-    private var resizeWidth: Int? = null
-    private var resizeHeight: Int? = null
-    private var useMemoryCache: Boolean = true
-    private var useDiskCache: Boolean = true
-    private var placeholderRes: Int? = null
-    private var placeholderColor: Int? = null
-    private var errorRes: Int? = null
-    private var outHeight: Int? = null
-    private var outWidth: Int? = null
-    private var enableShimmer: Boolean = false
-    private var priority: RequestPriority = RequestPriority.NORMAL
-    private val transformations = mutableListOf<Transformation>()
-
-    fun load(url: String): RequestBuilder {
-        this.url = url
-        return this
-    }
-
-    fun resize(width: Int, height: Int): RequestBuilder {
-        resizeWidth = width
-        resizeHeight = height
-        return this
-    }
-
-    fun transform(vararg transformations: Transformation): RequestBuilder {
-        this.transformations.addAll(transformations)
-        return this
-    }
-
-    fun placeholder(hex: String?): RequestBuilder {
-        placeholderColor = hex?.toColorInt()
-        return this
-    }
-
-    fun error(resId: Int): RequestBuilder {
-        errorRes = resId
-        return this
-    }
-
-    fun priority(priority: RequestPriority): RequestBuilder {
-        this.priority = priority
-        return this
-    }
-
-    fun into(imageView: ImageView) {
-        // 1. Build request object
-        val request = Request(
-            url ?: throw IllegalArgumentException("URL required"),
-            resizeWidth, resizeHeight,
-            useMemoryCache, useDiskCache,
-            transformations.toList(),
-            outWidth, outHeight,
-            enableShimmer
-        )
-
-        // 2. Create target
-        val errorDrawable = errorRes?.let {
-            AppCompatResources.getDrawable(imageView.context, it)
-        }
-        val target = ImageViewTarget(imageView, errorDrawable, enableShimmer)
-
-        // 3. Apply placeholder
-        applyPlaceholder(imageView)
-
-        // 4. Check memory cache (sync)
-        if (engine.checkMemoryCache(request, target)) {
-            RequestManager.track(imageView, null)
-            return
-        }
-
-        // 5. Load from disk/network (async)
-        val reload = { into(imageView) }
-        val job = if (!RequestManager.isPaused()) {
-            engine.load(request, target, priority)
-        } else null
-
-        RequestManager.track(imageView, job, onResume = reload)
-    }
-}
+ImageLoader.with(context)
+    .load(photo.urls.small!!)
+    .resize(400, 400)
+    .transform(CenterCropRoundedCorners(32f))
+    .priority(RequestPriority.HIGH)
+    .enableShimmer()
+    .into(holder.imgPhoto)
 ```
-
-**Design Patterns:**
-
-- **Builder Pattern**: Fluent API
-- **Strategy Pattern**: Transformations
-- **Observer Pattern**: Target callbacks
 
 #### **4.1.3 Engine (Core Logic)**
 
-Quản lý toàn bộ quá trình load ảnh với priority queues và coroutines.
+`ImageLoader/src/main/java/com/example/imageloader/core/Engine.kt`
+
+- 3 hàng đợi ưu tiên (HIGH/NORMAL/LOW) → số lượng worker khác nhau.
+- Bước đầu tiên luôn kiểm tra `ActiveResources` rồi `MemoryCache` để tránh I/O tốn kém.
+- Nếu miss cache: đọc disk → nếu fail → fetch network → decode → transform → deliver về `Target`.
+- Mọi callback UI (`onResourceReady`, `onLoadStarted`, `onLoadFailed`) đều post về Main thread.
 
 ```kotlin
-class Engine(
-    private val activeResources: ActiveResources,
-    private val memoryCache: MemoryCache,
-    private val diskCache: DiskCache,
-    private val fetcher: DataFetcher,
-    private val bitmapPool: BitmapPool
-) {
-    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    // Priority queues
-    private val highPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
-    private val normalPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
-    private val lowPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
-
-    init {
-        // Setup active → memory transition
-        activeResources.setOnResourceReleased { key, resource ->
-            val bitmap = resource.getBitmap()
-            if (!bitmap.isRecycled) {
-                memoryCache.put(key, bitmap)
-            }
-        }
-
-        // Start workers
-        startPriorityWorkers()
-    }
-
-    private fun startPriorityWorkers() {
-        // 2 workers for HIGH priority
-        repeat(2) {
-            engineScope.launch {
-                for (prioritizedReq in highPriorityQueue) {
-                    if (!prioritizedReq.job.isCancelled) {
-                        executeLoad(prioritizedReq.request, prioritizedReq.target)
-                    }
-                }
-            }
-        }
-
-        // 1 worker for NORMAL priority
-        engineScope.launch {
-            for (prioritizedReq in normalPriorityQueue) {
-                if (!prioritizedReq.job.isCancelled) {
-                    executeLoad(prioritizedReq.request, prioritizedReq.target)
-                }
-            }
-        }
-
-        // 1 worker for LOW priority
-        engineScope.launch {
-            for (prioritizedReq in lowPriorityQueue) {
-                if (!prioritizedReq.job.isCancelled) {
-                    executeLoad(prioritizedReq.request, prioritizedReq.target)
-                }
-            }
-        }
-    }
-
-    fun checkMemoryCache(req: Request, target: Target): Boolean {
-        val key = buildKey(req)
-
-        // Check active resources
-        activeResources.get(key)?.let { resource ->
-            if (!resource.isReleased() && !resource.getBitmap().isRecycled) {
-                target.onResourceReady(resource)
-                ImageLoaderLogger.log(ImageLoadLog(req.url, LogSource.ACTIVE_CACHE, ...))
-                return true
-            }
-        }
-
-        // Check memory cache
-        memoryCache.get(key)?.let { bitmap ->
-            if (!bitmap.isRecycled) {
-                val res = EngineResource(key, bitmap, activeResources)
-                activeResources.put(key, res)
-                target.onResourceReady(res)
-                ImageLoaderLogger.log(ImageLoadLog(req.url, LogSource.MEMORY_CACHE, ...))
-                return true
-            }
-        }
-
-        return false
-    }
-
-    fun load(req: Request, target: Target, priority: RequestPriority): Job {
-        engineScope.launch(Dispatchers.Main) {
-            target.onLoadStarted()
-        }
-
-        val job = Job()
-        val prioritizedReq = PrioritizedRequest(req, target, priority, job)
-
-        engineScope.launch {
-            when (priority) {
-                RequestPriority.HIGH -> highPriorityQueue.send(prioritizedReq)
-                RequestPriority.NORMAL -> normalPriorityQueue.send(prioritizedReq)
-                RequestPriority.LOW -> lowPriorityQueue.send(prioritizedReq)
-            }
-        }
-
-        return job
-    }
-
-    private suspend fun executeLoad(req: Request, target: Target) {
-        val key = buildKey(req)
-        val dataKey = buildDataKey(req)
-
-        try {
-            // Try disk cache
-            diskCache.get(dataKey)?.let { bytes ->
-                val bitmap = decodeDiskCacheBytes(bytes, req)
-                deliverResult(bitmap, req, target, key, LogSource.DISK_CACHE)
-                return
-            }
-
-            // Fetch from network
-            val result = fetcher.fetch(req.url)
-            val bitmap = decodeAndTransform(result.bytes, req)
-
-            // Save to disk
-            if (req.useDiskCache) {
-                diskCache.put(dataKey, result.bytes, result.contentType)
-            }
-
-            deliverResult(bitmap, req, target, key, LogSource.NETWORK)
-
-        } catch (e: Exception) {
-            handleLoadError(e, req, target)
-        }
-    }
-
-    private suspend fun decodeDiskCacheBytes(bytes: ByteArray, req: Request): Bitmap {
-        var bitmap = BitmapDecoder.decode(bytes, req.resizeWidth ?: 0, req.resizeHeight ?: 0)
-
-        if (req.transformations.isNotEmpty()) {
-            bitmap = withContext(Dispatchers.Default) {
-                req.transformations.fold(bitmap) { bmp, transform ->
-                    transform.transform(bitmapPool, bmp, req.outWidth ?: 0, req.outHeight ?: 0)
-                }
-            }
-        }
-
-        return bitmap
-    }
-
-    private suspend fun deliverResult(
-        bitmap: Bitmap,
-        req: Request,
-        target: Target,
-        key: String,
-        source: LogSource
-    ) {
-        val res = EngineResource(key, bitmap, activeResources)
-        activeResources.put(key, res)
-
-        withContext(Dispatchers.Main) {
-            target.onResourceReady(res)
-        }
-
-        ImageLoaderLogger.log(ImageLoadLog(req.url, source, ...))
-    }
+private fun startPriorityWorkers() {
+    startWorkerForQueue(highPriorityQueue, workerCount = 2)
+    startWorkerForQueue(normalPriorityQueue, workerCount = 1)
+    startWorkerForQueue(lowPriorityQueue, workerCount = 1)
 }
 ```
-
-**Key Features:**
-
-- **Priority queuing**: 3 separate channels
-- **Coroutines**: Non-blocking I/O
-- **Error handling**: Retry logic
-- **Logging**: Performance tracking
 
 #### **4.1.4 EngineResource (Reference Counting)**
 
-Wrapper cho Bitmap với reference counting để quản lý lifecycle.
+- Gói `Bitmap` kèm `refCount`; khi `release()` đưa về memory cache thông qua callback.
+- Đảm bảo bitmap không bị recycle khi view vẫn đang sử dụng.
 
 ```kotlin
-class EngineResource(
-    val key: String,
-    private val bitmap: Bitmap,
-    private val listener: ResourceListener
-) {
-    private var refCount = 0
-    private val released = AtomicBoolean(false)
-
-    @Synchronized
-    fun acquire() {
-        check(!released.get()) { "Cannot acquire a released resource" }
-        refCount++
-    }
-
-    @Synchronized
-    fun release() {
-        check(refCount > 0) { "Cannot release a resource that is not acquired" }
-        refCount--
-
-        if (refCount == 0 && released.compareAndSet(false, true)) {
-            listener.onResourceReleased(key, this)
-        }
-    }
-
-    fun getBitmap(): Bitmap = bitmap
-
-    fun isReleased(): Boolean = released.get()
-
-    fun sizeInBytes(): Int = try {
-        bitmap.allocationByteCount
-    } catch (t: Throwable) {
-        bitmap.byteCount
+@Synchronized
+fun release() {
+    check(refCount > 0)
+    if (--refCount == 0 && released.compareAndSet(false, true)) {
+        listener.onResourceReleased(key, this)
     }
 }
 ```
-
-**Lifecycle:**
-
-```
-Create → acquire() → Display → release() → Move to Memory Cache
-         refCount=1          refCount=0
-```
-
-**Benefits:**
-
-- Tránh bitmap bị recycle khi còn đang hiển thị
-- Tự động cleanup khi không còn reference
-- Thread-safe với synchronized
 
 ### 4.2 Cache System
 
 #### **4.2.1 ActiveResources**
 
-```kotlin
-class ActiveResources : ResourceListener {
-    private val activeMap = mutableMapOf<String, EngineResource>()
-    private var resourceReleasedCallback: ((String, EngineResource) -> Unit)? = null
+`ImageLoader/src/main/java/com/example/imageloader/cache/ActiveResources.kt`
 
-    fun setOnResourceReleased(callback: (String, EngineResource) -> Unit) {
-        resourceReleasedCallback = callback
-    }
-
-    @Synchronized
-    fun put(key: String, engineResource: EngineResource) {
-        activeMap[key] = engineResource
-    }
-
-    @Synchronized
-    fun get(key: String): EngineResource? {
-        return activeMap[key]
-    }
-
-    @Synchronized
-    fun remove(key: String) {
-        activeMap.remove(key)
-    }
-
-    override fun onResourceReleased(key: String, engineResource: EngineResource) {
-        synchronized(this) {
-            activeMap.remove(key)
-        }
-        resourceReleasedCallback?.invoke(key, engineResource)
-    }
-}
-```
-
-**Characteristics:**
-
-- **Thread-safe**: synchronized methods
-- **Callback pattern**: Notify khi resource released
-- **No size limit**: Active resources không bị evict
+- Map `key → EngineResource` cho các bitmap đang xuất hiện trên UI (được acquire).
+- Khi `EngineResource.release()` gọi `resourceReleasedCallback`, cache sẽ move bitmap xuống `MemoryCache`.
 
 #### **4.2.2 MemoryCache (LRU)**
 
+`ImageLoader/src/main/java/com/example/imageloader/cache/MemoryCache.kt`
+
+- Dựa trên `LruCache<String, Bitmap>` với `sizeOf = allocationByteCount`.
+- Khi eviction xảy ra, bitmap mutable sẽ được đẩy sang `BitmapPool` để tái sử dụng.
+- API chính: `get`, `put`, `remove`, `clear`, `size`.
+
 ```kotlin
-class MemoryCache(
-    maxBytes: Int,
-    private val bitmapPool: BitmapPool? = null
-) {
-    private var itemCount = 0
-
-    private val cache = object : LruCache<String, Bitmap>(maxBytes) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.safeByteCount()
-
-        override fun entryRemoved(
-            evicted: Boolean,
-            key: String?,
-            oldValue: Bitmap?,
-            newValue: Bitmap?
-        ) {
-            if (evicted) {
-                ImageLoaderLogger.d("MemoryCache", "Evicting image")
-                itemCount--
-            }
-
-            // Return evicted bitmap to pool
-            if (evicted && oldValue != null && oldValue.isMutable && !oldValue.isRecycled) {
-                bitmapPool?.put(oldValue)
-            }
-        }
-    }
-
-    fun get(key: String): Bitmap? = cache.get(key)
-
-    fun put(key: String, bitmap: Bitmap): Bitmap? {
-        if (bitmap.isRecycled) return null
-
-        val oldBitmap = cache.put(key, bitmap)
-        if (oldBitmap == null) {
-            itemCount++
-        }
-        return oldBitmap
-    }
-
-    fun remove(key: String): Bitmap? {
-        val removed = cache.remove(key)
-        if (removed != null) {
-            itemCount--
-        }
-        return removed
-    }
-
-    fun clear() {
-        cache.evictAll()
-        itemCount = 0
-    }
-
-    val size: Int get() = cache.size()
-}
-
-private fun Bitmap.safeByteCount(): Int {
-    return try {
-        if (isRecycled) 0 else allocationByteCount
-    } catch (_: Throwable) {
-        0
+override fun entryRemoved(evicted: Boolean, key: String?, oldValue: Bitmap?, newValue: Bitmap?) {
+    if (evicted && oldValue?.isMutable == true && !oldValue.isRecycled) {
+        bitmapPool?.put(oldValue)
     }
 }
 ```
-
-**LRU Algorithm:**
-
-- Access/put → move to head
-- Evict từ tail khi đầy
-- Size-based eviction (bytes, không phải count)
-
-**Integration với Bitmap Pool:**
-
-- Evicted bitmap → pool (nếu mutable)
-- Pool → reuse cho decode mới
 
 #### **4.2.3 DiskCache**
 
+`ImageLoader/src/main/java/com/example/imageloader/cache/DiskCache.kt`
+
+- Lưu raw bytes với phần mở rộng dựa trên `contentType`, chỉ ghi file mới khi chưa tồn tại.
+- Trước khi ghi, `ensureSizeInitialized()` cập nhật tổng size và `trimCacheAsync()` dọn file cũ nhất nếu vượt 150 MB mặc định.
+- Ghi dữ liệu theo pattern `temp → rename` để đảm bảo atomic write, nên nếu app crash giữa chừng cache vẫn không corrupt.
+
 ```kotlin
-class DiskCache(
-    context: Context,
-    private val maxSizeBytes: Long = 150L * 1_000 * 1_000,
-) {
-    companion object { private const val TAG = "DiskCache" }
+@Synchronized
+fun put(key: String, data: ByteArray, contentType: String?): Boolean {
+    ensureSizeInitialized()
+    val file = File(cacheDir, "$key${extensionOf(contentType)}")
+    if (file.exists()) return true
 
-    private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    @Volatile private var currentSize: Long = 0L
-    private var sizeInitialized = false
-
-    @Synchronized
-    fun get(key: String): ByteArray? {
-        val file = findFile(key) ?: return null
-        return try {
-            file.readBytes()
-        } catch (e: Exception) {
-            ImageLoaderLogger.e(TAG, "get() failed: ${e.message}", category = LogCategory.CACHE)
-            null
-        }
+    if (currentSize + data.size > maxSizeBytes) {
+        trimCacheAsync(currentSize + data.size - maxSizeBytes)
     }
 
-    @Synchronized
-    fun put(key: String, data: ByteArray, contentType: String? = null): Boolean {
-        ensureSizeInitialized()
-        val extension = when (contentType?.lowercase()) {
-            "image/jpeg", "image/jpg" -> ".jpg"
-            "image/png" -> ".png"
-            "image/webp" -> ".webp"
-            "image/avif" -> ".avif"
-            else -> ".dat"
+    val temp = File(cacheDir, "${file.name}.tmp")
+    return try {
+        FileOutputStream(temp).use { it.write(data) }
+        temp.renameTo(file).also { success ->
+            if (success) currentSize += data.size else temp.delete()
         }
-        val file = File(cacheDir, "$key$extension")
-        if (file.exists()) return true
-
-        val estimatedSize = data.size.toLong()
-        if (currentSize + estimatedSize > maxSizeBytes) {
-            trimCacheAsync(currentSize + estimatedSize - maxSizeBytes)
-        }
-
-        val tempFile = File(cacheDir, "${file.name}.tmp")
-        return try {
-            FileOutputStream(tempFile).use { out ->
-                out.write(data)
-                out.flush()
-            }
-            val success = tempFile.renameTo(file)
-            if (success) currentSize += estimatedSize else tempFile.delete()
-            success
-        } catch (e: IOException) {
-            ImageLoaderLogger.e(TAG, "put() failed: ${e.message}", e, LogCategory.CACHE)
-            tempFile.delete()
-            false
-        }
-    }
-
-    private fun ensureSizeInitialized() {
-        if (sizeInitialized) return
-        sizeInitialized = true
-        ioScope.launch {
-            currentSize = cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
-        }
-    }
-
-    private fun trimCacheAsync(requiredFree: Long) {
-        ioScope.launch {
-            synchronized(this@DiskCache) {
-                var freed = 0L
-                cacheDir.listFiles()
-                    ?.sortedBy { it.lastModified() }
-                    ?.forEach { file ->
-                        if (freed >= requiredFree) return@synchronized
-                        val size = file.length()
-                        if (file.delete()) {
-                            freed += size
-                            currentSize -= size
-                        }
-                    }
-                if (freed > 0) {
-                    ImageLoaderLogger.i(
-                        TAG,
-                        "Trimmed cache, freed ${freed / 1_000}KB",
-                        LogCategory.CACHE
-                    )
-                }
-            }
-        }
-    }
-
-    private fun findFile(key: String): File? {
-        val candidates = listOf(".jpg", ".png", ".webp", ".avif", ".dat", "")
-        return candidates
-            .map { File(cacheDir, "$key$it") }
-            .firstOrNull { it.exists() }
+    } catch (ioe: IOException) {
+        temp.delete(); false
     }
 }
 ```
 
-**File Structure & eviction:**
-
-```
-/storage/emulated/0/Android/data/com.example.app/cache/image_cache/
-├── a3f7c2b8d9e1f0c4.webp
-├── b4e8d3c9e0f1a5b6.jpg
-└── ...
-```
-
-- Key = `MD5(dataKey)` + extension được suy ra từ `contentType`
-- Ghi dữ liệu theo pattern `temp → rename` để đảm bảo atomic write
-- Tự động trim theo `lastModified` khi vượt `maxSizeBytes` (mặc định 150MB)
-- `ensureSizeInitialized()` tính toán kích thước cache hiện tại ở background để tránh block UI
+**File organization:** `key = MD5(dataKey)` kết hợp extension (`.jpg/.png/.webp/.avif/.dat`). Trimming dựa trên `lastModified` nên file ít dùng nhất bị xóa trước.
 
 #### **4.2.4 LruBitmapPool**
 
+`ImageLoader/src/main/java/com/example/imageloader/core/LruBitmapPool.kt`
+
+- Lưu bitmap mutable trong `LinkedHashMap` (LRU) để tái sử dụng thông qua `BitmapFactory.inBitmap`.
+- `get()` ưu tiên exact match, nếu không tìm thấy sẽ lấy bitmap lớn hơn và `reconfigure()` về kích thước mới.
+- `put()` bỏ qua bitmap quá lớn (chiếm >50% pool) để tránh nghẽn.
+- `trimToSize()` recycle bớt khi vượt ngưỡng.
+
 ```kotlin
-class LruBitmapPool(private val maxSizeBytes: Long) : BitmapPool {
-    private data class Key(val width: Int, val height: Int, val config: Bitmap.Config)
+override fun get(width: Int, height: Int, config: Bitmap.Config): Bitmap? {
+    val exact = map[key(width, height, config)]?.removeFirstOrNull { it.canReuse() }
+    if (exact != null) return exact.also { currentSize -= it.safeByteCount() }
 
-    private val map = LinkedHashMap<Key, MutableList<Bitmap>>(0, 0.75f, true)
-    private var currentSize = 0L
-
-    // Debug counters
-    private var hits = 0
-    private var misses = 0
-    private var puts = 0
-    private var evictions = 0
-
-    @Synchronized
-    override fun get(width: Int, height: Int, config: Bitmap.Config): Bitmap? {
-        val key = Key(width, height, config)
-
-        // 1. Try exact match
-        val bitmap = map[key]?.firstOrNull { isReusable(it) }?.also {
-            map[key]?.remove(it)
-            if (map[key]?.isEmpty() == true) map.remove(key)
-            currentSize -= it.safeByteCount()
-            hits++
-        }
-
-        if (bitmap != null) {
-            bitmap.eraseColor(0) // Clear previous content
-            return bitmap
-        }
-
-        // 2. Fallback: find larger bitmap and reconfigure
-        for ((k, list) in map.entries) {
-            if (k.config == config && k.width >= width && k.height >= height) {
-                val candidate = list.firstOrNull { isReusable(it) }
-                if (candidate != null) {
-                    list.remove(candidate)
-                    if (list.isEmpty()) map.remove(k)
-                    currentSize -= candidate.safeByteCount()
-
-                    candidate.reconfigure(width, height, config)
-                    candidate.eraseColor(0)
-                    hits++
-                    return candidate
-                }
-            }
-        }
-
-        misses++
-        return null
-    }
-
-    @Synchronized
-    override fun put(bitmap: Bitmap) {
-        if (!isReusable(bitmap)) return
-
-        val size = bitmap.safeByteCount()
-        if (size <= 0 || size > maxSizeBytes / 2) return
-
-        val key = Key(bitmap.width, bitmap.height, bitmap.config ?: Bitmap.Config.ARGB_8888)
-        map.getOrPut(key) { mutableListOf() }.add(bitmap)
-        currentSize += size
-        puts++
-
-        trimToSize(maxSizeBytes)
-    }
-
-    @Synchronized
-    override fun clear() {
-        map.values.forEach { list ->
-            list.forEach { if (!it.isRecycled) it.recycle() }
-        }
-        map.clear()
-        currentSize = 0L
-    }
-
-    private fun trimToSize(maxSize: Long) {
-        val iter = map.entries.iterator()
-        while (currentSize > maxSize && iter.hasNext()) {
-            val entry = iter.next()
-            val list = entry.value
-
-            while (list.isNotEmpty() && currentSize > maxSize) {
-                val b = list.removeAt(list.size - 1)
-                currentSize -= b.safeByteCount()
-                if (!b.isRecycled) b.recycle()
-                evictions++
-            }
-
-            if (list.isEmpty()) iter.remove()
-        }
-    }
-
-    private fun isReusable(bitmap: Bitmap): Boolean {
-        return !bitmap.isRecycled && bitmap.isMutable
-    }
-
-    fun dumpStats(): String {
-        return "hits=$hits, misses=$misses, puts=$puts, evictions=$evictions, size=$currentSize/$maxSizeBytes"
-    }
+    return map.entries
+        .firstOrNull { (k, _) -> k.config == config && k.width >= width && k.height >= height }
+        ?.value
+        ?.removeFirstOrNull { it.canReuse() }
+        ?.apply { reconfigure(width, height, config) }
 }
-```
-
-**Pool Efficiency Metrics:**
-
-```kotlin
-val hitRate = (hits.toFloat() / (hits + misses)) * 100
-// Target: > 70% hit rate
 ```
 
 **Khi nào cần dùng:**
@@ -1772,166 +1158,63 @@ val hitRate = (hits.toFloat() / (hits + misses)) * 100
 
 #### **4.3.1 HttpFetcher**
 
+`ImageLoader/src/main/java/com/example/imageloader/fetcher/HttpFetcher.kt`
+
+- `ConnectionFactory` (functional interface) giúp mock `HttpURLConnection` trong unit test.
+- Retry tối đa 2 lần với exponential delay (`700ms`, `1400ms`).
+- Ghi log qua `ImageLoaderLogger` mỗi lần retry.
+
 ```kotlin
-class HttpFetcher(
-    private val connectionFactory: ConnectionFactory = DefaultConnectionFactory,
-    private val maxRetries: Int = 2,
-    private val retryDelayMillis: Long = 700,
-) : DataFetcher {
-
-    override suspend fun fetch(url: String): HttpResult {
-        var lastError: Exception? = null
-        repeat(maxRetries) { attempt ->
-            try {
-                connectionFactory.open(url).run {
-                    connectTimeout = 5_000
-                    readTimeout = 5_000
-                    requestMethod = "GET"
-                    doInput = true
-                    connect()
-
-                    if (responseCode != HttpURLConnection.HTTP_OK) {
-                        throw IOException("HTTP $responseCode")
-                    }
-
-                    val result = HttpResult(inputStream.use { it.readBytes() }, contentType)
-                    disconnect()
-                    return result
-                }
-            } catch (e: Exception) {
-                lastError = e
-                ImageLoaderLogger.w(
-                    TAG,
-                    "Retry ${attempt + 1}/$maxRetries: ${e.message}",
-                    LogCategory.NETWORK
-                )
-                if (attempt < maxRetries - 1) {
-                    delay(retryDelayMillis * (1L shl attempt))
-                }
+override suspend fun fetch(url: String): HttpResult {
+    var lastError: Exception? = null
+    repeat(maxRetries) { attempt ->
+        runCatching {
+            connectionFactory.open(url).apply {
+                connectTimeout = 5_000
+                readTimeout = 5_000
+                requestMethod = "GET"
+                doInput = true
+                connect()
+            }.run {
+                if (responseCode != HttpURLConnection.HTTP_OK) error("HTTP $responseCode")
+                return HttpResult(inputStream.use { it.readBytes() }, contentType).also { disconnect() }
             }
+        }.onFailure {
+            lastError = it
+            if (attempt < maxRetries - 1) delay(retryDelayMillis * (1L shl attempt))
         }
-        throw lastError ?: IOException("Unknown error fetching $url")
     }
-
-    companion object {
-        private const val TAG = "HttpFetcher"
-    }
+    throw lastError ?: IOException("Unknown error fetching $url")
 }
 ```
-
-**ConnectionFactory:**
-
-```kotlin
-fun interface ConnectionFactory {
-    fun open(url: String): HttpURLConnection
-}
-
-object DefaultConnectionFactory : ConnectionFactory {
-    override fun open(url: String): HttpURLConnection {
-        return URL(url).openConnection() as HttpURLConnection
-    }
-}
-```
-
-**Benefits:**
-
-- **Đơn giản, dễ mock**: Interface cho phép inject factory khác khi test
-- **Không phụ thuộc OkHttp**: Dùng trực tiếp `HttpURLConnection`
-- **Chủ động timeout**: `HttpFetcher` gán `connectTimeout`/`readTimeout` mỗi request
 
 #### **4.3.2 BitmapDecoder**
 
+`ImageLoader/src/main/java/com/example/imageloader/decode/BitmapDecoder.kt`
+
+- Đọc bounds trước (`inJustDecodeBounds = true`) để tính `inSampleSize` → tránh decode bitmap quá lớn.
+- Khi `useBitmapPool` bật, truyền `inBitmap` từ pool để reuse memory; nếu `IllegalArgumentException` xảy ra thì retry không dùng pool.
+- Trích xuất dominant color cho placeholder thông qua `Palette` (dùng bản decode nhỏ 10×10).
+
 ```kotlin
-object BitmapDecoder {
-    private var bitmapPool: BitmapPool? = null
-    private var useBitmapPool: Boolean = false
-
-    fun setBitmapPool(pool: BitmapPool?) {
-        bitmapPool = pool
-    }
-
-    fun setUseBitmapPool(use: Boolean) {
-        useBitmapPool = use
-    }
-
-    fun decode(bytes: ByteArray, reqWidth: Int, reqHeight: Int): Bitmap {
-        val options = BitmapFactory.Options().apply {
-            // 1. Decode bounds only
-            inJustDecodeBounds = true
-        }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-
-        // 2. Calculate inSampleSize
-        options.inSampleSize = calculateInSampleSize(
-            options.outWidth, options.outHeight,
-            reqWidth, reqHeight
-        )
-
-        // 3. Try to get bitmap from pool
-        if (useBitmapPool && bitmapPool != null && reqWidth > 0 && reqHeight > 0) {
-            options.inMutable = true
-            options.inBitmap = bitmapPool?.get(
-                options.outWidth / options.inSampleSize,
-                options.outHeight / options.inSampleSize,
-                Bitmap.Config.ARGB_8888
-            )
-        }
-
-        // 4. Decode actual bitmap
-        options.inJustDecodeBounds = false
-
-        return try {
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                ?: throw IOException("Failed to decode bitmap")
-        } catch (e: IllegalArgumentException) {
-            // inBitmap reuse failed, try again without pool
-            options.inBitmap = null
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                ?: throw IOException("Failed to decode bitmap")
-        }
-    }
-
-    private fun calculateInSampleSize(
-        width: Int, height: Int,
-        reqWidth: Int, reqHeight: Int
-    ): Int {
-        if (reqWidth <= 0 || reqHeight <= 0) return 1
-
-        var inSampleSize = 1
-
-        if (height > reqHeight || width > reqWidth) {
-            val halfHeight = height / 2
-            val halfWidth = width / 2
-
-            while ((halfHeight / inSampleSize) >= reqHeight &&
-                (halfWidth / inSampleSize) >= reqWidth
-            ) {
-                inSampleSize *= 2
-            }
-        }
-
-        return inSampleSize
+fun decode(bytes: ByteArray, reqW: Int, reqH: Int): Bitmap {
+    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+    opts.inSampleSize = calculateInSampleSize(opts.outWidth, opts.outHeight, reqW, reqH)
+    opts.inJustDecodeBounds = false
+    if (useBitmapPool) opts.inBitmap = bitmapPool?.get(
+        opts.outWidth / opts.inSampleSize,
+        opts.outHeight / opts.inSampleSize,
+        Bitmap.Config.ARGB_8888
+    )
+    return try {
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+    } catch (_: IllegalArgumentException) {
+        opts.inBitmap = null
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 }
 ```
-
-**inSampleSize Examples:**
-
-```
-Original: 2048x2048
-Request: 512x512
-
-inSampleSize = 4
-Decoded: 512x512 (4x downscaling)
-Memory saved: 16x
-```
-
-**BitmapFactory.Options:**
-
-- **inJustDecodeBounds**: Get size without decoding
-- **inSampleSize**: Downsample during decode
-- **inBitmap**: Reuse bitmap memory (pool)
-- **inMutable**: Allow reconfigure
 
 ### 4.4 Transformation System
 
@@ -2300,176 +1583,69 @@ object Injector {
 
 **PhotoPreloader:**
 
-```kotlin
-class PhotoPreloader(
-    private val getRandomPhotosUseCase: GetRandomPhotosUseCase,
-    private val scope: CoroutineScope
-) {
-    private val preloadedPages = mutableMapOf<Int, List<UnsplashPhoto>>()
-    private val preloadJobs = mutableMapOf<Int, Job>()
-    private val perPage = 25
-    private val preloadAhead = 3
+`app/src/main/java/com/example/myimageloaderproject/modules/home/data/cache/PhotoPreloader.kt`
 
-    fun preloadPages(currentPage: Int) {
-        val targetPages = (currentPage + 1)..(currentPage + preloadAhead)
-        targetPages.forEach { page ->
-            if (!preloadedPages.containsKey(page) && !preloadJobs.containsKey(page)) {
-                preloadJobs[page] = scope.launch(Dispatchers.IO) {
-                    try {
-                        val photos = getRandomPhotosUseCase(perPage, page)
-                        preloadedPages[page] = photos
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    } finally {
-                        preloadJobs.remove(page)
-                    }
-                }
+- Giữ map `preloadedPages` và song song `preloadJobs` để không tải trùng lặp.
+- Gọi `preloadPages(currentPage)` sẽ queue tối đa 3 trang kế tiếp trên `Dispatchers.IO`.
+- `cleanupOldPages()` drop mọi trang `< currentPage - 1` và hủy job tương ứng để hạn chế RAM/network.
+
+```kotlin
+fun preloadPages(currentPage: Int) {
+    ((currentPage + 1)..(currentPage + PRELOAD_AHEAD)).forEach { page ->
+        if (page !in preloadedPages && page !in preloadJobs) {
+            preloadJobs[page] = scope.launch(Dispatchers.IO) {
+                runCatching { getRandomPhotosUseCase(perPage, page) }
+                    .onSuccess { preloadedPages[page] = it }
+                    .also { preloadJobs.remove(page) }
             }
         }
-        cleanupOldPages(currentPage)
     }
-
-    fun getPreloadedPage(page: Int): List<UnsplashPhoto>? = preloadedPages[page]
-
-    fun hasPreloadedPage(page: Int): Boolean = preloadedPages.containsKey(page)
-
-    private fun cleanupOldPages(currentPage: Int) {
-        val pagesToRemove = preloadedPages.keys.filter { it < currentPage - 1 }
-        pagesToRemove.forEach { page ->
-            preloadedPages.remove(page)
-            preloadJobs[page]?.cancel()
-            preloadJobs.remove(page)
-        }
-    }
-
-    fun clear() {
-        preloadJobs.values.forEach { it.cancel() }
-        preloadJobs.clear()
-        preloadedPages.clear()
-    }
+    cleanupOldPages(currentPage)
 }
 ```
 
-**Preloading Strategy:**
+**Preloading Strategy Highlights**
 
-- Preload 3 trang kế tiếp (`preloadAhead`) trên `Dispatchers.IO`
-- Lưu JSON/photo metadata để `HomeViewModel` có thể dựng UI ngay lập tức; phần image bytes vẫn được `ImageLoader` tải theo nhu cầu
-- Bỏ qua trang đã tải hoặc đang có job chạy để tránh duplicated work
-- Khi vượt quá `currentPage - 1`, vừa hủy job vừa remove dữ liệu để tiết kiệm RAM
+1. Data-only caching: chỉ lưu `UnsplashPhoto` để `HomeViewModel` render ngay, ảnh thật vẫn do `ImageLoader` xử lý với priority thấp.
+2. `hasPreloadedPage()`/`getPreloadedPage()` giúp `loadMorePhotos()` đọc dữ liệu nóng; nếu miss thì fallback sang API.
+3. `clear()` hủy mọi coroutine khi người dùng refresh hoặc ViewModel bị clear.
 
 ### 5.3 Data Layer
 
 #### **5.3.1 Error Handling**
 
-**AppError Sealed Class:**
+`app/src/main/java/com/example/myimageloaderproject/core/error/ErrorHandler.kt`
+
+- `AppError` gom các tình huống: `NetworkError`, `RateLimitError`, `ServerError`, `UnknownError`.
+- `handleError()` map exception → error UX-friendly, đồng bộ với thông điệp tiếng Việt trong UI.
+- `shouldRetry()` chỉ true cho lỗi mạng, rate-limit và HTTP 503.
+- `getRetryDelay()` trả về hằng số (3s mạng, 5s 503, `retryAfter` cho rate-limit).
 
 ```kotlin
-sealed class AppError {
-    data class NetworkError(val message: String) : AppError()
-    data class RateLimitError(val retryAfter: Long = 60_000L) : AppError()
-    data class ServerError(val code: Int, val message: String) : AppError()
-    data class UnknownError(val message: String) : AppError()
+fun shouldRetry(error: AppError) = when (error) {
+    is AppError.NetworkError,
+    is AppError.RateLimitError -> true
+    is AppError.ServerError -> error.code == 503
+    else -> false
 }
 ```
 
-**ErrorHandler:**
+**Retry Strategy Recap**
 
-```kotlin
-object ErrorHandler {
-    fun handleError(throwable: Throwable): AppError = when (throwable) {
-        is UnknownHostException,
-        is SocketTimeoutException -> AppError.NetworkError(
-            "Không thể kết nối đến server. Vui lòng kiểm tra kết nối Internet."
-        )
-        is IOException -> AppError.NetworkError("Lỗi kết nối mạng. Vui lòng thử lại.")
-        else -> {
-            val message = throwable.message ?: "Đã xảy ra lỗi không xác định"
-            when {
-                message.contains("403") || message.contains("rate limit", ignoreCase = true) ->
-                    AppError.RateLimitError()
-                message.contains("500") || message.contains("502") || message.contains("503") ->
-                    AppError.ServerError(500, "Server đang gặp sự cố. Vui lòng thử lại sau.")
-                else -> AppError.UnknownError(message)
-            }
-        }
-    }
-
-    fun getErrorMessage(error: AppError): String = when (error) {
-        is AppError.NetworkError -> error.message
-        is AppError.RateLimitError -> "Đã vượt giới hạn request. Vui lòng đợi ${error.retryAfter / 1000}s."
-        is AppError.ServerError -> error.message
-        is AppError.UnknownError -> error.message
-    }
-
-    fun shouldRetry(error: AppError): Boolean = when (error) {
-        is AppError.NetworkError -> true
-        is AppError.RateLimitError -> true
-        is AppError.ServerError -> error.code == 503
-        is AppError.UnknownError -> false
-    }
-
-    fun getRetryDelay(error: AppError): Long = when (error) {
-        is AppError.NetworkError -> 3_000L
-        is AppError.RateLimitError -> error.retryAfter
-        is AppError.ServerError -> 5_000L
-        is AppError.UnknownError -> 0L
-    }
-}
-```
-
-**Retry Strategy:**
-
-- Network errors: fixed 3s delay trước khi auto-retry
-- Rate limit: sử dụng `retryAfter` trả về từ server (mặc định 60s)
-- Server 503: retry sau 5s, các HTTP 5xx khác sẽ bubble lên UI
-- Unknown errors: không retry tự động
+1. Network errors: auto retry sau 3s nếu thiết bị đã online trở lại (`NetworkMonitor.isNetworkAvailable()` check trước khi gọi lại API).
+2. Rate limit: chờ `retryAfter` (default 60 s) rồi mới trigger `loadPhotos()` lần nữa.
+3. Server 503: retry sau 5 s; các HTTP khác hiển thị snackbar và chờ người dùng tương tác.
+4. Unknown errors: không retry tự động để tránh vòng lặp vô hạn, chỉ hiển thị thông báo.
 
 #### **5.3.2 Network Monitoring**
 
-```kotlin
-sealed class NetworkStatus {
-    object Available : NetworkStatus()
-    object Unavailable : NetworkStatus()
-    object Losing : NetworkStatus()
-    object Lost : NetworkStatus()
-}
+`app/src/main/java/com/example/myimageloaderproject/core/network/NetworkMonitor.kt`
 
-class NetworkMonitor(private val context: Context) {
-    private val connectivityManager =
-        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+- Exposes a cold `Flow<NetworkStatus>` built via `callbackFlow` + `ConnectivityManager.NetworkCallback`.
+- Emits `Available/Losing/Lost/Unavailable` states and deduplicates via `distinctUntilChanged()`.
+- Provides synchronous `isNetworkAvailable()` helper for ViewModel retry checks.
 
-    val networkStatus: Flow<NetworkStatus> = callbackFlow {
-        val networkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) = trySend(NetworkStatus.Available)
-            override fun onLosing(network: Network, maxMsToLive: Int) = trySend(NetworkStatus.Losing)
-            override fun onLost(network: Network) = trySend(NetworkStatus.Lost)
-            override fun onUnavailable() = trySend(NetworkStatus.Unavailable)
-        }
-
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-
-        connectivityManager.registerNetworkCallback(request, networkCallback)
-        trySend(getCurrentNetworkStatus())
-
-        awaitClose { connectivityManager.unregisterNetworkCallback(networkCallback) }
-    }.distinctUntilChanged()
-
-    fun isNetworkAvailable(): Boolean {
-        val network = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }
-
-    private fun getCurrentNetworkStatus(): NetworkStatus {
-        return if (isNetworkAvailable()) NetworkStatus.Available else NetworkStatus.Unavailable
-    }
-}
-```
-
-**Flow-based Usage (HomeActivity):**
+**Collecting Network Status in UI**
 
 ```kotlin
 private fun observeNetworkStatus() {
@@ -2929,3 +2105,4 @@ backup JSON (`JsonBackupManager`), còn luồng chính parsing API sử dụng *
 - [Unsplash API](https://unsplash.com/documentation)
 
 ---
+- Toàn bộ thao tác được `@Synchronized` để tránh race condition giữa worker threads và Main thread.
