@@ -1538,72 +1538,117 @@ private fun Bitmap.safeByteCount(): Int {
 #### **4.2.3 DiskCache**
 
 ```kotlin
-class DiskCache(context: Context) {
-    private val cacheDir = File(context.externalCacheDir, "image_cache").apply {
-        if (!exists()) mkdirs()
-    }
+class DiskCache(
+    context: Context,
+    private val maxSizeBytes: Long = 150L * 1_000 * 1_000,
+) {
+    companion object { private const val TAG = "DiskCache" }
 
-    companion object {
-        private const val TAG = "DiskCache"
-    }
+    private val cacheDir = File(context.externalCacheDir, "image_cache").apply { mkdirs() }
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var currentSize: Long = 0L
+    private var sizeInitialized = false
 
+    @Synchronized
     fun get(key: String): ByteArray? {
+        val file = findFile(key) ?: return null
         return try {
-            val file = File(cacheDir, key)
-            if (file.exists()) {
-                ImageLoaderLogger.d(TAG, "Disk cache hit: $key")
-                file.readBytes()
-            } else {
-                ImageLoaderLogger.d(TAG, "Disk cache miss: $key")
-                null
-            }
+            file.readBytes()
         } catch (e: Exception) {
-            ImageLoaderLogger.e(TAG, "Failed to read disk cache", e, LogCategory.CACHE)
+            ImageLoaderLogger.e(TAG, "get() failed: ${e.message}", category = LogCategory.CACHE)
             null
         }
     }
 
-    fun put(key: String, bytes: ByteArray, contentType: String?) {
-        try {
-            val file = File(cacheDir, key)
-            file.writeBytes(bytes)
-            ImageLoaderLogger.d(TAG, "Saved to disk: $key (${bytes.size} bytes)")
-        } catch (e: Exception) {
-            ImageLoaderLogger.e(TAG, "Failed to write disk cache", e, LogCategory.CACHE)
+    @Synchronized
+    fun put(key: String, data: ByteArray, contentType: String? = null): Boolean {
+        ensureSizeInitialized()
+        val extension = when (contentType?.lowercase()) {
+            "image/jpeg", "image/jpg" -> ".jpg"
+            "image/png" -> ".png"
+            "image/webp" -> ".webp"
+            "image/avif" -> ".avif"
+            else -> ".dat"
+        }
+        val file = File(cacheDir, "$key$extension")
+        if (file.exists()) return true
+
+        val estimatedSize = data.size.toLong()
+        if (currentSize + estimatedSize > maxSizeBytes) {
+            trimCacheAsync(currentSize + estimatedSize - maxSizeBytes)
+        }
+
+        val tempFile = File(cacheDir, "${file.name}.tmp")
+        return try {
+            FileOutputStream(tempFile).use { out ->
+                out.write(data)
+                out.flush()
+            }
+            val success = tempFile.renameTo(file)
+            if (success) currentSize += estimatedSize else tempFile.delete()
+            success
+        } catch (e: IOException) {
+            ImageLoaderLogger.e(TAG, "put() failed: ${e.message}", e, LogCategory.CACHE)
+            tempFile.delete()
+            false
         }
     }
 
-    fun clear() {
-        cacheDir.deleteRecursively()
-        cacheDir.mkdirs()
-        ImageLoaderLogger.i(TAG, "Disk cache cleared")
+    private fun ensureSizeInitialized() {
+        if (sizeInitialized) return
+        sizeInitialized = true
+        ioScope.launch {
+            currentSize = cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+        }
     }
 
-    fun size(): Long {
-        return cacheDir.walkTopDown()
-            .filter { it.isFile }
-            .map { it.length() }
-            .sum()
+    private fun trimCacheAsync(requiredFree: Long) {
+        ioScope.launch {
+            synchronized(this@DiskCache) {
+                var freed = 0L
+                cacheDir.listFiles()
+                    ?.sortedBy { it.lastModified() }
+                    ?.forEach { file ->
+                        if (freed >= requiredFree) return@synchronized
+                        val size = file.length()
+                        if (file.delete()) {
+                            freed += size
+                            currentSize -= size
+                        }
+                    }
+                if (freed > 0) {
+                    ImageLoaderLogger.i(
+                        TAG,
+                        "Trimmed cache, freed ${freed / 1_000}KB",
+                        LogCategory.CACHE
+                    )
+                }
+            }
+        }
+    }
+
+    private fun findFile(key: String): File? {
+        val candidates = listOf(".jpg", ".png", ".webp", ".avif", ".dat", "")
+        return candidates
+            .map { File(cacheDir, "$key$it") }
+            .firstOrNull { it.exists() }
     }
 }
 ```
 
-**File Structure:**
+**File Structure & eviction:**
 
 ```
 /storage/emulated/0/Android/data/com.example.app/cache/image_cache/
-├── a3f7c2b8d9e1f0c4b5a6e7d8c9f0e1d2
-├── b4e8d3c9e0f1a5b6c7d8e9f0a1b2c3d4
+├── a3f7c2b8d9e1f0c4.webp
+├── b4e8d3c9e0f1a5b6.jpg
 └── ...
 ```
 
-**Filename = MD5(request key)**
-
-**Future Improvements:**
-
-- LRU eviction cho disk cache
-- Max size limit
-- Metadata file (access time, size, etc.)
+- Key = `MD5(dataKey)` + extension được suy ra từ `contentType`
+- Ghi dữ liệu theo pattern `temp → rename` để đảm bảo atomic write
+- Tự động trim theo `lastModified` khi vượt `maxSizeBytes` (mặc định 150MB)
+- `ensureSizeInitialized()` tính toán kích thước cache hiện tại ở background để tránh block UI
 
 #### **4.2.4 LruBitmapPool**
 
@@ -2257,61 +2302,49 @@ object Injector {
 
 ```kotlin
 class PhotoPreloader(
-    private val getPhotosUseCase: GetRandomPhotosUseCase,
+    private val getRandomPhotosUseCase: GetRandomPhotosUseCase,
     private val scope: CoroutineScope
 ) {
     private val preloadedPages = mutableMapOf<Int, List<UnsplashPhoto>>()
+    private val preloadJobs = mutableMapOf<Int, Job>()
     private val perPage = 25
-
-    companion object {
-        private const val TAG = "PhotoPreloader"
-    }
+    private val preloadAhead = 3
 
     fun preloadPages(currentPage: Int) {
-        scope.launch {
-            try {
-                // Preload next 2 pages
-                for (page in (currentPage + 1)..(currentPage + 2)) {
-                    if (!preloadedPages.containsKey(page)) {
-                        Log.d(TAG, "Preloading page $page")
-                        val photos = getPhotosUseCase(perPage, page)
+        val targetPages = (currentPage + 1)..(currentPage + preloadAhead)
+        targetPages.forEach { page ->
+            if (!preloadedPages.containsKey(page) && !preloadJobs.containsKey(page)) {
+                preloadJobs[page] = scope.launch(Dispatchers.IO) {
+                    try {
+                        val photos = getRandomPhotosUseCase(perPage, page)
                         preloadedPages[page] = photos
-
-                        // Preload images với LOW priority
-                        photos.forEach { photo ->
-                            photo.urls.small?.let { url ->
-                                ImageLoader.with(/* context */)
-                                    .load(url)
-                                    .priority(RequestPriority.LOW)
-                                    .resize(400, 400)
-                                // Don't set target, just preload to cache
-                            }
-                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        preloadJobs.remove(page)
                     }
                 }
-
-                // Cleanup old pages (keep only 5 pages)
-                if (preloadedPages.size > 5) {
-                    val oldPages = preloadedPages.keys
-                        .filter { it < currentPage - 2 }
-                    oldPages.forEach { preloadedPages.remove(it) }
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Preload failed", e)
             }
+        }
+        cleanupOldPages(currentPage)
+    }
+
+    fun getPreloadedPage(page: Int): List<UnsplashPhoto>? = preloadedPages[page]
+
+    fun hasPreloadedPage(page: Int): Boolean = preloadedPages.containsKey(page)
+
+    private fun cleanupOldPages(currentPage: Int) {
+        val pagesToRemove = preloadedPages.keys.filter { it < currentPage - 1 }
+        pagesToRemove.forEach { page ->
+            preloadedPages.remove(page)
+            preloadJobs[page]?.cancel()
+            preloadJobs.remove(page)
         }
     }
 
-    fun hasPreloadedPage(page: Int): Boolean {
-        return preloadedPages.containsKey(page)
-    }
-
-    fun getPreloadedPage(page: Int): List<UnsplashPhoto>? {
-        return preloadedPages[page]
-    }
-
     fun clear() {
+        preloadJobs.values.forEach { it.cancel() }
+        preloadJobs.clear()
         preloadedPages.clear()
     }
 }
@@ -2319,10 +2352,10 @@ class PhotoPreloader(
 
 **Preloading Strategy:**
 
-- Preload 2 pages ahead
-- Use LOW priority để không block visible items
-- Cleanup old pages để tiết kiệm memory
-- Preload cả data lẫn images
+- Preload 3 trang kế tiếp (`preloadAhead`) trên `Dispatchers.IO`
+- Lưu JSON/photo metadata để `HomeViewModel` có thể dựng UI ngay lập tức; phần image bytes vẫn được `ImageLoader` tải theo nhu cầu
+- Bỏ qua trang đã tải hoặc đang có job chạy để tránh duplicated work
+- Khi vượt quá `currentPage - 1`, vừa hủy job vừa remove dữ liệu để tiết kiệm RAM
 
 ### 5.3 Data Layer
 
@@ -2331,10 +2364,11 @@ class PhotoPreloader(
 **AppError Sealed Class:**
 
 ```kotlin
-sealed class AppError(open val message: String) {
-    data class NetworkError(override val message: String) : AppError(message)
-    data class ServerError(override val message: String) : AppError(message)
-    data class UnknownError(override val message: String) : AppError(message)
+sealed class AppError {
+    data class NetworkError(val message: String) : AppError()
+    data class RateLimitError(val retryAfter: Long = 60_000L) : AppError()
+    data class ServerError(val code: Int, val message: String) : AppError()
+    data class UnknownError(val message: String) : AppError()
 }
 ```
 
@@ -2342,123 +2376,112 @@ sealed class AppError(open val message: String) {
 
 ```kotlin
 object ErrorHandler {
-    fun handleError(e: Exception): AppError {
-        return when (e) {
-            is IOException -> AppError.NetworkError(
-                e.message ?: "Network connection failed"
-            )
-            is HttpException -> {
-                when (e.code()) {
-                    in 500..599 -> AppError.ServerError(
-                        "Server error: ${e.message()}"
-                    )
-                    in 400..499 -> AppError.NetworkError(
-                        "Client error: ${e.message()}"
-                    )
-                    else -> AppError.UnknownError(e.message())
-                }
+    fun handleError(throwable: Throwable): AppError = when (throwable) {
+        is UnknownHostException,
+        is SocketTimeoutException -> AppError.NetworkError(
+            "Không thể kết nối đến server. Vui lòng kiểm tra kết nối Internet."
+        )
+        is IOException -> AppError.NetworkError("Lỗi kết nối mạng. Vui lòng thử lại.")
+        else -> {
+            val message = throwable.message ?: "Đã xảy ra lỗi không xác định"
+            when {
+                message.contains("403") || message.contains("rate limit", ignoreCase = true) ->
+                    AppError.RateLimitError()
+                message.contains("500") || message.contains("502") || message.contains("503") ->
+                    AppError.ServerError(500, "Server đang gặp sự cố. Vui lòng thử lại sau.")
+                else -> AppError.UnknownError(message)
             }
-            else -> AppError.UnknownError(
-                e.message ?: "Unknown error occurred"
-            )
         }
     }
 
-    fun shouldRetry(error: AppError): Boolean {
-        return when (error) {
-            is AppError.NetworkError -> true
-            is AppError.ServerError -> true
-            is AppError.UnknownError -> false
-        }
+    fun getErrorMessage(error: AppError): String = when (error) {
+        is AppError.NetworkError -> error.message
+        is AppError.RateLimitError -> "Đã vượt giới hạn request. Vui lòng đợi ${error.retryAfter / 1000}s."
+        is AppError.ServerError -> error.message
+        is AppError.UnknownError -> error.message
     }
 
-    fun getRetryDelay(error: AppError, attemptCount: Int = 0): Long {
-        val baseDelay = when (error) {
-            is AppError.NetworkError -> 1000L
-            is AppError.ServerError -> 2000L
-            is AppError.UnknownError -> 0L
-        }
+    fun shouldRetry(error: AppError): Boolean = when (error) {
+        is AppError.NetworkError -> true
+        is AppError.RateLimitError -> true
+        is AppError.ServerError -> error.code == 503
+        is AppError.UnknownError -> false
+    }
 
-        // Exponential backoff with max 32 seconds
-        return baseDelay * (1 shl attemptCount.coerceAtMost(5))
+    fun getRetryDelay(error: AppError): Long = when (error) {
+        is AppError.NetworkError -> 3_000L
+        is AppError.RateLimitError -> error.retryAfter
+        is AppError.ServerError -> 5_000L
+        is AppError.UnknownError -> 0L
     }
 }
 ```
 
-**Retry Delays:**
+**Retry Strategy:**
 
-```
-Attempt 1: 1s
-Attempt 2: 2s
-Attempt 3: 4s
-Attempt 4: 8s
-Attempt 5: 16s
-Attempt 6+: 32s (max)
-```
+- Network errors: fixed 3s delay trước khi auto-retry
+- Rate limit: sử dụng `retryAfter` trả về từ server (mặc định 60s)
+- Server 503: retry sau 5s, các HTTP 5xx khác sẽ bubble lên UI
+- Unknown errors: không retry tự động
 
 #### **5.3.2 Network Monitoring**
 
 ```kotlin
-class NetworkMonitor(context: Context) {
+sealed class NetworkStatus {
+    object Available : NetworkStatus()
+    object Unavailable : NetworkStatus()
+    object Losing : NetworkStatus()
+    object Lost : NetworkStatus()
+}
+
+class NetworkMonitor(private val context: Context) {
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
+    val networkStatus: Flow<NetworkStatus> = callbackFlow {
+        val networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = trySend(NetworkStatus.Available)
+            override fun onLosing(network: Network, maxMsToLive: Int) = trySend(NetworkStatus.Losing)
+            override fun onLost(network: Network) = trySend(NetworkStatus.Lost)
+            override fun onUnavailable() = trySend(NetworkStatus.Unavailable)
+        }
+
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+
+        connectivityManager.registerNetworkCallback(request, networkCallback)
+        trySend(getCurrentNetworkStatus())
+
+        awaitClose { connectivityManager.unregisterNetworkCallback(networkCallback) }
+    }.distinctUntilChanged()
+
     fun isNetworkAvailable(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val network = connectivityManager.activeNetwork ?: return false
-            val capabilities = connectivityManager.getNetworkCapabilities(network)
-                ?: return false
-
-            return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        } else {
-            @Suppress("DEPRECATION")
-            val networkInfo = connectivityManager.activeNetworkInfo
-            @Suppress("DEPRECATION")
-            return networkInfo?.isConnected == true
-        }
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
-    fun registerCallback(callback: ConnectivityManager.NetworkCallback) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            connectivityManager.registerDefaultNetworkCallback(callback)
-        }
-    }
-
-    fun unregisterCallback(callback: ConnectivityManager.NetworkCallback) {
-        connectivityManager.unregisterNetworkCallback(callback)
+    private fun getCurrentNetworkStatus(): NetworkStatus {
+        return if (isNetworkAvailable()) NetworkStatus.Available else NetworkStatus.Unavailable
     }
 }
 ```
 
-**Network Callback Usage:**
+**Flow-based Usage (HomeActivity):**
 
 ```kotlin
-class HomeActivity : AppCompatActivity() {
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            runOnUiThread {
-                // Network available, retry failed requests
-                viewModel.retryIfNeeded()
+private fun observeNetworkStatus() {
+    lifecycleScope.launch {
+        networkMonitor.networkStatus.collectLatest { status ->
+            when (status) {
+                NetworkStatus.Available -> showOnlineBanner()
+                NetworkStatus.Unavailable,
+                NetworkStatus.Lost -> showOfflineBanner()
+                NetworkStatus.Losing -> showUnstableBanner()
             }
         }
-
-        override fun onLost(network: Network) {
-            runOnUiThread {
-                // Network lost, show offline UI
-                showOfflineSnackbar()
-            }
-        }
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        networkMonitor.registerCallback(networkCallback)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        networkMonitor.unregisterCallback(networkCallback)
     }
 }
 ```
@@ -2906,4 +2929,3 @@ backup JSON (`JsonBackupManager`), còn luồng chính parsing API sử dụng *
 - [Unsplash API](https://unsplash.com/documentation)
 
 ---
-
