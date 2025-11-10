@@ -66,7 +66,7 @@ import android.graphics.drawable.Drawable
  * )
  * imageView.setImageDrawable(shimmer)
  * shimmer.start() // Start animation
- * 
+ *
  * // Later, when image loaded:
  * shimmer.stop()
  * imageView.setImageBitmap(bitmap)
@@ -81,22 +81,22 @@ import android.graphics.drawable.Drawable
 class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 0f) : Drawable() {
     /** Paint cho shimmer gradient */
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    
+
     /** Matrix để transform gradient (tạo animation) */
     private val matrix = Matrix()
-    
+
     /** ValueAnimator điều khiển shimmer sweep */
     private var animator: ValueAnimator? = null
-    
+
     /** Current translation X (0.0 - 1.0) */
     private var translateX = 0f
-    
+
     /** Path cho rounded corners clipping */
     private val path = Path()
-    
+
     /** RectF helper cho rounded rect */
     private val rectF = RectF()
-    
+
     /**
      * Shimmer gradient colors.
      * - Nếu có baseColor: 5 colors (smooth gradient)
@@ -113,15 +113,15 @@ class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 
             0xFFE0E0E0.toInt()
         )
     }
-    
+
     /**
      * Lighten một color theo factor (0.0 - 1.0).
-     * 
+     *
      * ## Algorithm:
      * ```
      * newColor = baseColor + (255 - baseColor) * factor
      * ```
-     * 
+     *
      * @param color Base color (ARGB)
      * @param factor Lighten factor (0.0 = no change, 1.0 = white)
      * @return Lightened color
@@ -131,14 +131,14 @@ class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 
         val green = Color.green(color)
         val blue = Color.blue(color)
         val alpha = Color.alpha(color)
-        
+
         val newRed = (red + (255 - red) * factor).toInt().coerceIn(0, 255)
         val newGreen = (green + (255 - green) * factor).toInt().coerceIn(0, 255)
         val newBlue = (blue + (255 - blue) * factor).toInt().coerceIn(0, 255)
-        
+
         return Color.argb(alpha, newRed, newGreen, newBlue)
     }
-    
+
     init {
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 1500
@@ -150,7 +150,7 @@ class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 
             }
         }
     }
-    
+
     override fun onBoundsChange(bounds: android.graphics.Rect) {
         super.onBoundsChange(bounds)
         val width = bounds.width().toFloat()
@@ -167,17 +167,17 @@ class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 
         )
         paint.shader = shader
     }
-    
+
     override fun draw(canvas: Canvas) {
         val bounds = bounds
         if (bounds.isEmpty) return
-        
+
         val width = bounds.width().toFloat()
-        
+
         matrix.reset()
         matrix.setTranslate(-width + translateX * width * 2, 0f)
         paint.shader?.setLocalMatrix(matrix)
-        
+
         if (cornerRadius > 0f) {
             rectF.set(bounds)
             path.reset()
@@ -187,17 +187,18 @@ class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 
             canvas.drawRect(bounds, paint)
         }
     }
-    
+
     override fun setAlpha(alpha: Int) {
         paint.alpha = alpha
     }
-    
+
     override fun setColorFilter(colorFilter: ColorFilter?) {
         paint.colorFilter = colorFilter
     }
-    
+
+    @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
-    
+
     /**
      * Start shimmer animation.
      * Bắt đầu ValueAnimator để sweep gradient.
@@ -205,7 +206,7 @@ class ShimmerDrawable(baseColor: Int? = null, private val cornerRadius: Float = 
     fun start() {
         animator?.start()
     }
-    
+
     /**
      * Stop shimmer animation.
      * Dừng và cancel animator để save CPU/battery.

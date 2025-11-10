@@ -1,5 +1,8 @@
 package com.example.imageloader.target
 
+import android.graphics.Color
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.LayerDrawable
 import android.os.Handler
@@ -92,7 +95,6 @@ class ImageViewTarget(
 
     companion object {
         private const val TAG = "ImageViewTarget"
-        private const val LOADING_DELAY_MS = 500L
     }
 
     /**
@@ -198,10 +200,9 @@ class ImageViewTarget(
                     Gravity.CENTER
                 )
                 isIndeterminate = true
-                indeterminateDrawable?.setColorFilter(
-                    android.graphics.Color.BLACK,
-                    android.graphics.PorterDuff.Mode.SRC_IN
-                )
+                indeterminateDrawable?.colorFilter =
+                    PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN)
+
             }
         }
 
