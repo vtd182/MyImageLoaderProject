@@ -73,4 +73,14 @@ class HomeModule(
     val getCachedPhotosUseCase by lazy {
         GetCachedPhotosUseCase(photoRepository)
     }
+    
+    fun createHomeViewModelFactory(): com.example.myimageloaderproject.modules.home.presentation.HomeViewModelFactory {
+        return com.example.myimageloaderproject.modules.home.presentation.HomeViewModelFactory(
+            loadInitialPhotosUseCase = loadInitialPhotosUseCase,
+            refreshPhotosUseCase = refreshPhotosUseCase,
+            loadMorePhotosUseCase = loadMorePhotosUseCase,
+            preloadPhotosUseCase = preloadPhotosUseCase,
+            getCachedPhotosUseCase = getCachedPhotosUseCase
+        )
+    }
 }

@@ -9,6 +9,7 @@
         android:maxSdkVersion="28" />
 
     <application
+        android:name=".MyApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -31,6 +32,11 @@
 
         <activity
             android:name=".modules.home.presentation.HomeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MyImageLoaderProject" />
+
+        <activity
+            android:name=".modules.home.presentation.HomeActivityV2"
             android:exported="false"
             android:theme="@style/Theme.MyImageLoaderProject" />
     </application>

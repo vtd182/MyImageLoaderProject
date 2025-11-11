@@ -11,6 +11,7 @@ data class UnsplashPhotoDTO(
     val color: String? = "#000000",
     val likes: Int,
     val description: String?,
+    val alt_description: String?,
     val urls: UnsplashUrlsDTO,
     val links: UnsplashLinksDTO,
     val user: UnsplashUserDTO
