@@ -11,6 +11,9 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.graphics.toColorInt
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import com.example.imageloader.logger.LogViewer
 import com.example.myimageloaderproject.MyApplication
@@ -51,7 +54,7 @@ class HomeActivity : BaseActivity() {
 
     private var tapCount = 0
     private var lastTapTime = 0L
-    private val TAP_TIMEOUT = 500L
+    private val tapTimeOut = 500L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -122,6 +125,7 @@ class HomeActivity : BaseActivity() {
                         showContent(state)
                         handleNetworkStatus(state.networkStatus)
                     }
+
                     is HomeUiState.Error -> {
                         showError(state)
                         handleNetworkStatus(state.networkStatus)
@@ -152,7 +156,7 @@ class HomeActivity : BaseActivity() {
                 viewModel.handleIntent(HomeIntent.ClearError)
             }
         }
-        
+
         if (state.error == null && lastShownError != null) {
             lastShownError = null
         }
@@ -204,7 +208,7 @@ class HomeActivity : BaseActivity() {
             return
         }
         lastHandledNetworkStatus = status
-        
+
         when (status) {
             NetworkStatus.Available -> {
                 networkStatusBarView.setBackgroundColor("#4CAF50".toColorInt())
@@ -285,7 +289,7 @@ class HomeActivity : BaseActivity() {
     private fun handleTitleTap() {
         val currentTime = System.currentTimeMillis()
 
-        if (currentTime - lastTapTime > TAP_TIMEOUT) {
+        if (currentTime - lastTapTime > tapTimeOut) {
             tapCount = 0
         }
 
@@ -302,14 +306,27 @@ class HomeActivity : BaseActivity() {
     private fun addFpsOverlay() {
         val rootView = window.decorView as ViewGroup
         val fpsOverlay = FPSOverlay(this)
-        val size = resources.displayMetrics.density * 48 * 2
-        val params = FrameLayout.LayoutParams(size.toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        val size = (resources.displayMetrics.density * 48 * 2).toInt()
+        val params = FrameLayout.LayoutParams(size, ViewGroup.LayoutParams.WRAP_CONTENT)
         params.gravity = Gravity.TOP or Gravity.END
-        val statusBarHeight = resources.getDimensionPixelSize(
-            resources.getIdentifier("status_bar_height", "dimen", "android")
-        )
+
+        val windowInsets = ViewCompat.getRootWindowInsets(rootView)
+        val statusBarHeight = windowInsets
+            ?.getInsets(WindowInsetsCompat.Type.statusBars())
+            ?.top
+            ?: 15
+
         params.topMargin = statusBarHeight
         fpsOverlay.layoutParams = params
         rootView.addView(fpsOverlay)
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { _, insets ->
+            val newTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            fpsOverlay.updateLayoutParams<FrameLayout.LayoutParams> {
+                topMargin = newTop
+            }
+            insets
+        }
     }
 }
