@@ -248,26 +248,38 @@ ImageLoader.with(context)
 
 **Access:** Tap Home title 5 times để mở LogViewer
 
-### 2.7 Hệ Thống Disk Cache cho Photo Data
+### 2.7 Hệ Thống Disk Cache cho Photo Data (Multi-Page)
 
 **Chiến lược lưu trữ:**
 
-- **Storage**: File JSON trong external cache directory
-- **Expiration**: Tự động xóa sau 24 giờ
-- **Data**: Danh sách photos + page hiện tại + timestamp
+- **Storage**: File JSON trong external cache directory (`photo_backup.json`)
+- **Structure**: `Map<Int, List<UnsplashPhoto>>` (page number → photos)
+- **Expiration**: Tự động xóa sau 24 giờ (configurable via `AppConfig.CACHE_EXPIRY_HOURS`)
+- **Data**: Map of pages + timestamp
+- **Incremental saving**: Mỗi page mới được merge vào existing cache
 
 **Luồng xử lý:**
 
-1. **Initial Load**: Kiểm tra disk cache → Load nếu valid → Hiển thị ngay
-2. **Network Success**: Lưu xuống disk cache
-3. **App Restart**: Load từ disk cache (không cần network)
+1. **Initial Load**: Kiểm tra disk cache → Load tất cả pages đã lưu → Flatten thành list → Hiển thị ngay
+2. **Load More**: Fetch network → Save page to disk incrementally → Accumulate pages
+3. **Preload**: Background fetch → Save to memory cache + disk cache
+4. **App Restart Offline**: Load tất cả pages từ disk (VD: scroll đến page 10 → restart offline → vẫn hiển thị đủ 10 pages)
+5. **Refresh**: Clear cả memory + disk cache → Fetch page 1 → Save to disk
+
+**Logging & Monitoring:**
+
+- **ImageLoaderLogger integration**: Track số photos, số pages, max page
+- **Load logs**: "Loaded from disk: X photos across Y pages (max page: Z)"
+- **Save logs**: "Saved page N (M photos). Total cached: X photos across Y pages"
+- **Stats**: `jsonPhotoCount` và `jsonCurrentPage` trong LogViewer statistics
 
 **Lợi ích:**
 
-- **Offline support**: Xem ảnh cached khi offline
-- **Fast startup**: Load tức thì từ disk
+- **Progressive offline support**: Scroll đến page 10 → offline → vẫn xem được 10 pages (không chỉ page 1)
+- **Fast startup**: Load tức thì từ disk với toàn bộ pages đã scroll
 - **Data persistence**: Tồn tại khi app bị kill
 - **Bandwidth saving**: Giảm API calls không cần thiết
+- **Seamless UX**: Smooth scroll experience với preloaded pages + disk cache fallback
 
 ### 2.8 Network Monitoring & Auto-Retry
 
@@ -962,26 +974,44 @@ class PhotoLocalDataSource(
     private val diskCache: PhotoDiskCache,
     private val memoryCache: PhotoMemoryCache
 ) {
-    // Disk cache operations
-    suspend fun savePhotosToDisk(photos: List<UnsplashPhoto>, page: Int) {
-        diskCache.savePhotos(photos, page)
+    /**
+     * Load tất cả cached photos từ disk.
+     * Returns CachedPhotoData với pages map.
+     */
+    suspend fun getCachedPhotos(): CachedPhotoData? {
+        return diskCache.loadBackup()
     }
-
-    suspend fun loadPhotosFromDisk(): PhotoDiskCache.CachedData? {
-        return diskCache.loadPhotos()
+    
+    /**
+     * Save một page vào disk cache (incremental).
+     */
+    suspend fun savePage(page: Int, photos: List<UnsplashPhoto>) {
+        diskCache.savePage(page, photos)
     }
-
+    
+    suspend fun clearDiskCache() {
+        diskCache.clearBackup()
+    }
+    
     // Memory cache (preload) operations
-    fun savePhotosToMemory(page: Int, photos: List<UnsplashPhoto>) {
-        memoryCache.put(page, photos)
+    fun getPreloadedPage(page: Int): List<UnsplashPhoto>? {
+        return memoryCache.getPage(page)
     }
-
-    fun getPhotosFromMemory(page: Int): List<UnsplashPhoto>? {
-        return memoryCache.get(page)
+    
+    fun savePreloadedPage(page: Int, photos: List<UnsplashPhoto>) {
+        memoryCache.savePage(page, photos)
     }
-
+    
+    fun hasPreloadedPage(page: Int): Boolean {
+        return memoryCache.hasPage(page)
+    }
+    
     fun clearMemoryCache() {
         memoryCache.clear()
+    }
+    
+    fun clearOldPreloadedPages(currentPage: Int) {
+        memoryCache.clearOldPages(currentPage)
     }
 }
 ```
@@ -992,46 +1022,93 @@ class PhotoLocalDataSource(
 class PhotoDiskCache(
     private val fileStorageProvider: FileStorageProvider
 ) {
-    private val cacheFile: File
-        get() = File(
-            fileStorageProvider.getExternalCacheDir() ?: fileStorageProvider.getCacheDir(),
-            CACHE_FILE_NAME
-        )
-
-    data class CachedData(
-        val photos: List<UnsplashPhoto>,
-        val currentPage: Int,
-        val timestamp: Long
-    )
-
-    suspend fun savePhotos(photos: List<UnsplashPhoto>, currentPage: Int) {
-        withContext(Dispatchers.IO) {
-            val data = CachedData(
-                photos = photos,
-                currentPage = currentPage,
-                timestamp = System.currentTimeMillis()
-            )
-            val json = gson.toJson(data)
-            cacheFile.writeText(json)
-        }
+    private val gson = Gson()
+    
+    companion object {
+        private const val BACKUP_FILE_NAME = "photo_backup.json"
+        private const val TAG = "PhotoDiskCache"
     }
-
-    suspend fun loadPhotos(): CachedData? {
-        return withContext(Dispatchers.IO) {
-            if (!cacheFile.exists()) return@withContext null
-
-            val json = cacheFile.readText()
-            val data = gson.fromJson(json, CachedData::class.java)
-
-            // Check expiry (24 hours)
-            val isExpired = System.currentTimeMillis() - data.timestamp > CACHE_DURATION_MS
-            if (isExpired) {
-                cacheFile.delete()
-                null
-            } else {
-                data
+    
+    /**
+     * Save hoặc update một page vào disk cache.
+     * Merge với data hiện có (nếu có).
+     */
+    suspend fun savePage(page: Int, photos: List<UnsplashPhoto>) {
+        withContext(Dispatchers.IO) {
+            try {
+                val existing = loadBackupInternal()
+                val pagesMap = existing?.pages?.toMutableMap() ?: mutableMapOf()
+                
+                pagesMap[page] = photos
+                
+                val backup = CachedPhotoData(
+                    pages = pagesMap,
+                    timestamp = System.currentTimeMillis()
+                )
+                
+                val json = gson.toJson(backup)
+                fileStorageProvider.writeTextFile(BACKUP_FILE_NAME, json)
+                
+                val totalPhotos = pagesMap.values.sumOf { it.size }
+                ImageLoaderLogger.d(TAG, "Saved page $page (${photos.size} photos). Total cached: $totalPhotos photos across ${pagesMap.size} pages")
+            } catch (e: Exception) {
+                ImageLoaderLogger.e(TAG, "Failed to save page $page", e)
             }
         }
+    }
+    
+    /**
+     * Load tất cả pages từ disk cache.
+     * Returns CachedPhotoData với pages map.
+     */
+    suspend fun loadBackup(): CachedPhotoData? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val backup = loadBackupInternal() ?: return@withContext null
+                
+                if (isCacheExpired(backup.timestamp)) {
+                    ImageLoaderLogger.d(TAG, "Cache expired, clearing")
+                    fileStorageProvider.deleteFile(BACKUP_FILE_NAME)
+                    return@withContext null
+                }
+                
+                val totalPhotos = backup.pages.values.sumOf { it.size }
+                val maxPage = backup.pages.keys.maxOrNull() ?: 0
+                
+                ImageLoaderLogger.jsonPhotoCount = totalPhotos
+                ImageLoaderLogger.jsonCurrentPage = maxPage
+                
+                ImageLoaderLogger.i(TAG, "Loaded from disk: $totalPhotos photos across ${backup.pages.size} pages (max page: $maxPage)")
+                
+                backup
+            } catch (e: Exception) {
+                ImageLoaderLogger.e(TAG, "Failed to load backup", e)
+                null
+            }
+        }
+    }
+    
+    private fun isCacheExpired(timestamp: Long): Boolean {
+        val expiryTime = AppConfig.CACHE_EXPIRY_HOURS * 60 * 60 * 1000
+        return System.currentTimeMillis() - timestamp > expiryTime
+    }
+}
+
+/**
+ * CachedPhotoData - Structure lưu trữ pages trong disk cache.
+ * 
+ * @param pages Map từ page number -> list photos
+ * @param timestamp Thời điểm cache được tạo (để check expiry)
+ */
+data class CachedPhotoData(
+    val pages: Map<Int, List<UnsplashPhoto>>,
+    val timestamp: Long
+) {
+    /**
+     * Flatten tất cả pages thành single sorted list.
+     */
+    fun getAllPhotos(): List<UnsplashPhoto> {
+        return pages.toSortedMap().values.flatten()
     }
 }
 ```
@@ -1080,13 +1157,13 @@ class PhotoRepositoryImpl(
 
     override suspend fun loadInitialPhotos(): Result<LoadPhotoResult, AppError> {
         return try {
-            // Try disk cache first
-            val cachedData = localDataSource.loadPhotosFromDisk()
-            if (cachedData != null) {
+            // Try disk cache first (load all cached pages)
+            val cachedData = localDataSource.getCachedPhotos()
+            if (cachedData != null && cachedData.pages.isNotEmpty()) {
                 return Result.Success(
                     LoadPhotoResult(
-                        photos = cachedData.photos,
-                        currentPage = cachedData.currentPage,
+                        photos = cachedData.getAllPhotos(), // Flatten all pages
+                        currentPage = cachedData.pages.keys.maxOrNull() ?: 1,
                         isFromCache = true
                     )
                 )
@@ -1096,8 +1173,8 @@ class PhotoRepositoryImpl(
             val photosDTO = remoteDataSource.getPhotos(page = 1, perPage = AppConfig.PER_PAGE)
             val photos = photoMapper.toDomainList(photosDTO)
 
-            // Save to disk cache
-            localDataSource.savePhotosToDisk(photos, currentPage = 1)
+            // Save page 1 to disk cache
+            localDataSource.savePage(page = 1, photos = photos)
 
             Result.Success(
                 LoadPhotoResult(
@@ -1114,7 +1191,7 @@ class PhotoRepositoryImpl(
     override suspend fun loadMorePhotos(page: Int): Result<List<UnsplashPhoto>, AppError> {
         return try {
             // Check memory cache (preloaded) first
-            val cachedPhotos = localDataSource.getPhotosFromMemory(page)
+            val cachedPhotos = localDataSource.getPreloadedPage(page)
             if (cachedPhotos != null) {
                 return Result.Success(cachedPhotos)
             }
@@ -1122,6 +1199,9 @@ class PhotoRepositoryImpl(
             // Fetch from network
             val photosDTO = remoteDataSource.getPhotos(page, AppConfig.PER_PAGE)
             val photos = photoMapper.toDomainList(photosDTO)
+
+            // Save page to disk for offline support
+            localDataSource.savePage(page = page, photos = photos)
 
             Result.Success(photos)
         } catch (e: Exception) {
@@ -1131,9 +1211,20 @@ class PhotoRepositoryImpl(
 
     override suspend fun preloadPhotos(page: Int): Result<Unit, AppError> {
         return try {
+            // Skip if already preloaded in memory
+            if (localDataSource.hasPreloadedPage(page)) {
+                return Result.Success(Unit)
+            }
+            
             val photosDTO = remoteDataSource.getPhotos(page, AppConfig.PER_PAGE)
             val photos = photoMapper.toDomainList(photosDTO)
-            localDataSource.savePhotosToMemory(page, photos)
+            
+            localDataSource.savePreloadedPage(page, photos)
+            localDataSource.clearOldPreloadedPages(page)
+            
+            // Also save to disk for offline support
+            localDataSource.savePage(page = page, photos = photos)
+            
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(errorMapper.mapError(e))
@@ -1144,11 +1235,11 @@ class PhotoRepositoryImpl(
 
 **Repository Strategy:**
 
-- **loadInitialPhotos**: Disk cache → Network → Save disk
-- **loadMorePhotos**: Memory cache (preload) → Network
-- **refreshPhotos**: Force network → Clear caches → Save disk
-- **preloadPhotos**: Silent network → Memory cache only
-- **getCachedPhotos**: Disk cache only (offline)
+- **loadInitialPhotos**: Disk cache (all pages) → Network → Save page 1 to disk
+- **loadMorePhotos**: Memory cache (preload) → Network → **Save page to disk incrementally**
+- **refreshPhotos**: Force network → Clear memory + disk → Save page 1 to disk
+- **preloadPhotos**: Silent network → Memory cache + **Save page to disk**
+- **getCachedPhotos**: Disk cache only (offline) → Returns flattened list of all cached pages
 
 #### **5.4.5 HttpClient & BaseApiService**
 
