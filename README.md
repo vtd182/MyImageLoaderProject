@@ -116,32 +116,7 @@ Request → Active Resources → Memory Cache → Disk Cache → Network
 
 #### **Automatic Size Calculation**
 
-```kotlin
-// MemorySizeCalculator.kt
-fun calculate(context: Context, useBitmapPool: Boolean): MemorySizes {
-    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    val memoryClass = activityManager.memoryClass // MB
-    val isLowRamDevice = activityManager.isLowRamDevice
-
-    // Screen size calculation
-    val displayMetrics = context.resources.displayMetrics
-    val screenWidth = displayMetrics.widthPixels
-    val screenHeight = displayMetrics.heightPixels
-    val bytesPerPixel = 4 // ARGB_8888
-
-    // Base calculation
-    val screenBytes = screenWidth * screenHeight * bytesPerPixel
-    val multiplier = if (isLowRamDevice) 2.0 else 4.0
-
-    // Memory cache: 2-4 screens worth
-    val memoryCacheSize = (screenBytes * multiplier).toInt()
-
-    // Bitmap pool: 2x memory cache (if enabled)
-    val bitmapPoolSize = if (useBitmapPool) memoryCacheSize * 2 else 0
-
-    return MemorySizes(memoryCacheSize, bitmapPoolSize)
-}
-```
+`MemorySizeCalculator` tự động tính toán kích thước cache dựa trên:
 
 **Các yếu tố ảnh hưởng:**
 
@@ -149,619 +124,184 @@ fun calculate(context: Context, useBitmapPool: Boolean): MemorySizes {
 - **Screen resolution**: 1080p vs 4K → cache lớn hơn tương ứng
 - **Bitmap format**: ARGB_8888 (4 bytes/pixel) vs RGB_565 (2 bytes/pixel)
 
+**Công thức:**
+
+- Memory cache: 2-4 screens worth of pixels
+- Bitmap pool: 2x memory cache size (nếu enabled)
+
 #### **Bitmap Pooling**
 
-Bitmap Pool là một kỹ thuật **reuse memory** để giảm GC (Garbage Collection):
+Bitmap Pool là kỹ thuật **reuse memory** để giảm GC (Garbage Collection):
 
-```kotlin
-// LruBitmapPool.kt
-class LruBitmapPool(maxSize: Long) : BitmapPool {
-    private val map = LinkedHashMap<Key, MutableList<Bitmap>>()
+**Mechanism:**
 
-    data class Key(val width: Int, val height: Int, val config: Bitmap.Config)
-
-    override fun get(width: Int, height: Int, config: Bitmap.Config): Bitmap? {
-        // 1. Tìm exact match
-        val key = Key(width, height, config)
-        val bitmap = map[key]?.removeFirstOrNull()
-
-        // 2. Fallback: tìm bitmap lớn hơn và reconfigure
-        if (bitmap == null) {
-            for ((k, list) in map.entries) {
-                if (k.config == config && k.width >= width && k.height >= height) {
-                    val candidate = list.removeFirstOrNull()
-                    candidate?.reconfigure(width, height, config)
-                    return candidate
-                }
-            }
-        }
-
-        return bitmap
-    }
-
-    override fun put(bitmap: Bitmap) {
-        if (!bitmap.isMutable || bitmap.isRecycled) return
-        val key = Key(bitmap.width, bitmap.height, bitmap.config)
-        map.getOrPut(key) { mutableListOf() }.add(bitmap)
-
-        trimToSize(maxSize) // Evict old bitmaps if needed
-    }
-}
-```
+- Lưu trữ bitmaps đã dùng trong LRU cache
+- Ưu tiên exact match (width, height, config)
+- Fallback: Lấy bitmap lớn hơn và reconfigure
 
 **Benefits:**
 
 - Giảm memory allocations → ít GC hơn
-- Giảm memory churn
-- Tăng hiệu năng khi decode nhiều ảnh liên tục
+- Tăng performance khi decode nhiều ảnh liên tục
 - Trade-off: Tốn thêm RAM để giữ pool
 
 **Khi nào dùng:**
 
 - RecyclerView với nhiều ảnh cùng size
 - Gallery với thumbnails
-- Ảnh có size khác nhau nhiều
 - Low RAM devices
 
 ### 2.3 Request Priority System
 
-Engine sử dụng **3 priority queues** để xử lý requests:
+Engine sử dụng **3 priority queues** với worker counts khác nhau:
 
-```kotlin
-class Engine {
-    private val highPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
-    private val normalPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
-    private val lowPriorityQueue = Channel<PrioritizedRequest>(Channel.UNLIMITED)
+**Worker Allocation:**
 
-    init {
-        // 2 workers cho HIGH priority
-        repeat(2) {
-            engineScope.launch {
-                for (request in highPriorityQueue) {
-                    executeLoad(request)
-                }
-            }
-        }
-
-        // 1 worker cho NORMAL priority
-        engineScope.launch {
-            for (request in normalPriorityQueue) {
-                executeLoad(request)
-            }
-        }
-
-        // 1 worker cho LOW priority (preloading)
-        engineScope.launch {
-            for (request in lowPriorityQueue) {
-                executeLoad(request)
-            }
-        }
-    }
-}
-```
+- **HIGH**: 2 workers (ảnh đang hiển thị)
+- **NORMAL**: 1 worker (ảnh gần viewport)
+- **LOW**: 1 worker (preloading)
 
 **Priority Rules trong PhotoAdapter:**
 
-```kotlin
-override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-    val priority = when {
-        position < 6 -> RequestPriority.HIGH      // First screen
-        position < 20 -> RequestPriority.NORMAL   // Near viewport
-        else -> RequestPriority.LOW               // Preloading
-    }
-
-    ImageLoader.with(context)
-        .load(url)
-        .priority(priority)
-        .into(imageView)
-}
-```
+- Position 0-5: `HIGH` (First screen)
+- Position 6-19: `NORMAL` (Near viewport)
+- Position 20+: `LOW` (Preloading)
 
 ### 2.4 Lifecycle Awareness
 
 #### **Request Tracking System**
 
-```kotlin
-object RequestManager {
-    fun track(view: ImageView, job: Job?, onResume: (() -> Unit)?)
-    fun clear(view: ImageView)
-    fun pauseAll()
-    fun resumeVisibleOnly(visible: List<ImageView>)
+`RequestManager` quản lý lifecycle của image loading requests:
 
-    // Nội bộ:
-    // - running/pending map bằng ConcurrentHashMap
-    // - Khi resumeVisibleOnly: debounce 150ms, ưu tiên view đang hiển thị,
-    //   delay adaptive dựa trên FPS đo được qua Choreographer.
-}
-```
+**Key APIs:**
 
-**Integration trong Activity:**
-
-```kotlin
-class MyActivity : AppCompatActivity() {
-    private val visibleImages = mutableListOf<ImageView>()
-
-    private fun setupRecyclerView() {
-        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
-                if (newState == RecyclerView.SCROLL_STATE_SETTLING) {
-                    RequestManager.pauseAll()
-                } else if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                    visibleImages.clear()
-                    repeat(rv.childCount) { index ->
-                        rv.getChildAt(index)
-                            ?.findViewById<ImageView>(R.id.imgPhoto)
-                            ?.takeIf { it.isVisible }
-                            ?.let { visibleImages.add(it) }
-                    }
-                    RequestManager.resumeVisibleOnly(visibleImages)
-                }
-            }
-        })
-    }
-}
-```
+- `track()`: Track request cho ImageView
+- `clear()`: Clear request khi view recycled
+- `pauseAll()`: Pause tất cả requests (khi scroll nhanh)
+- `resumeVisibleOnly()`: Resume chỉ các views đang hiển thị
 
 **Benefits:**
 
 - Điều tiết request theo FPS hiện tại (adaptive delay)
-- Chỉ resume các ảnh đang hiển thị sau khi người dùng dừng scroll
-- Tránh memory leaks nhờ `ConcurrentHashMap` + `ImageView.clear()`
-- Cancel old requests khi view reuse
+- Chỉ load ảnh đang hiển thị
+- Tránh memory leaks và cancel old requests
+- Debounce 150ms trước khi resume
 
 ### 2.5 Image Transformations
 
-#### **CenterCropRoundedCorners Implementation**
+#### **Transformation System**
 
-```kotlin
-class CenterCropRoundedCorners(val radius: Float) : Transformation {
-    override fun transform(
-        pool: BitmapPool,
-        toTransform: Bitmap,
-        outWidth: Int,
-        outHeight: Int
-    ): Bitmap {
-        // 1. Create output bitmap (có thể lấy từ pool)
-        val result = pool.get(outWidth, outHeight, Bitmap.Config.ARGB_8888)
-            ?: Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
+`Transformation` interface cho phép xử lý bitmap trước khi hiển thị:
 
-        val canvas = Canvas(result)
+**Built-in Transformations:**
 
-        // 2. Calculate scale để cover toàn bộ output
-        val scale = max(
-            outWidth.toFloat() / toTransform.width,
-            outHeight.toFloat() / toTransform.height
-        )
+- `CenterCropRoundedCorners`: Center crop + bo góc
+- Custom transformations: Extend `BaseTransformation`
 
-        // 3. Center align
-        val scaledWidth = toTransform.width * scale
-        val scaledHeight = toTransform.height * scale
-        val dx = (outWidth - scaledWidth) / 2f
-        val dy = (outHeight - scaledHeight) / 2f
+**Key Features:**
 
-        // 4. Apply BitmapShader với matrix transform
-        val shader = BitmapShader(toTransform, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-        val matrix = Matrix().apply {
-            setScale(scale, scale)
-            postTranslate(dx, dy)
-        }
-        shader.setLocalMatrix(matrix)
+- **Scale calculation**: Cover toàn bộ output (CSS `background-size: cover`)
+- **Bitmap pooling**: Reuse bitmap để giảm allocations
+- **Cache key**: Transform params được include trong cache key
+- **Pipeline**: Transformations applied theo thứ tự
 
-        // 5. Draw rounded rect với shader
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.shader = shader
-            isFilterBitmap = true
-        }
-
-        val rect = RectF(0f, 0f, outWidth.toFloat(), outHeight.toFloat())
-        canvas.drawRoundRect(rect, radius, radius, paint)
-
-        // 6. Recycle original bitmap nếu không cần
-        if (toTransform != result) {
-            pool.put(toTransform)
-        }
-
-        return result
-    }
-
-    override fun key(): String = "CenterCropRoundedCorners($radius)"
-}
-```
-
-**Key Points:**
-
-- **Scale calculation**: Đảm bảo cover toàn bộ output (như CSS `background-size: cover`)
-- **Bitmap pooling**: Reuse bitmap từ pool để giảm allocations
-- **Cache key**: Bao gồm transformation params để cache riêng biệt
-
-#### **Transformation Pipeline**
-
-Transformations được apply theo thứ tự:
-
-```kotlin
-bitmap = transformations.fold(bitmap) { bmp, transform ->
-    transform.transform(pool, bmp, outWidth, outHeight)
-}
-```
-
-**Example:**
+**Usage Example:**
 
 ```kotlin
 ImageLoader.with(context)
     .load(url)
     .resize(800, 800)
-    .transform(
-        GrayscaleTransformation(),
-        CenterCropRoundedCorners(32f),
-        BlurTransformation(10f)
-    )
+    .transform(CenterCropRoundedCorners(32f))
     .into(imageView)
 ```
 
 ### 2.6 Real-time Logging System
 
-#### **ImageLoaderLogger Architecture**
+#### **Architecture**
 
-```kotlin
-object ImageLoaderLogger {
-    private val logs = ConcurrentLinkedQueue<LogEntry>()
-    private val listeners = mutableListOf<(LogEntry) -> Unit>()
+`ImageLoaderLogger` cung cấp logging system với UI viewer để debug và monitor:
 
-    var saveToActivity = true
-    var jsonPhotoCount = 0
-    var jsonCurrentPage = 0
+**Log Entry Types:**
 
-    fun log(log: ImageLoadLog) {
-        if (saveToActivity) {
-            logs.add(log)
+- **ImageLoadLog**: Track image loading metrics (source, timings, errors)
+    - Source: MEMORY, DISK, NETWORK
+    - Metrics: fetch time, decode time, transform time, total time
+- **MessageLog**: General logging với levels và categories
+    - Levels: VERBOSE, DEBUG, INFO, WARNING, ERROR
+    - Categories: CACHE, NETWORK, IMAGE, DECODE, TRANSFORM
 
-            // Limit logs size
-            while (logs.size > MAX_LOGS) {
-                logs.poll()
-            }
+**LogViewer UI Features:**
 
-            // Notify listeners (UI update)
-            synchronized(listeners) {
-                listeners.forEach { it(log) }
-            }
-        }
+- Real-time log updates với listener pattern
+- Filter by categories
+- Statistics dashboard với cache hit rates
+- Performance metrics visualization
 
-        // Always log to Logcat
-        Log.d(TAG, log.toLogcatString())
-    }
-}
-```
+**Key Statistics:**
 
-#### **Log Entry Types**
+- **Cache Hit Rates**: Active + Memory + Disk cache hits
+- **Performance Metrics**: Average timings per cache layer
+- **Performance Insights**:
+    - Memory hit rate > 80% → Cache size đủ lớn
+    - Network average > 500ms → Network chậm
+    - Decode time > 100ms → Ảnh quá lớn
 
-**1. ImageLoadLog:**
+**Access:** Tap Home title 5 times để mở LogViewer
 
-```kotlin
-data class ImageLoadLog(
-    val url: String,
-    val source: LogSource,              // MEMORY, DISK, NETWORK
-    val fetchTimeMs: Long? = null,      // Network fetch time
-    val decodeTimeMs: Long? = null,     // Bitmap decode time
-    val transformTimeMs: Long? = null,  // Transformation time
-    val cacheWriteTimeMs: Long? = null, // Disk write time
-    val totalTimeMs: Long,              // Total request time
-    val transformCount: Int = 0,
-    val error: String? = null
-)
-```
+### 2.7 Hệ Thống Disk Cache cho Photo Data
 
-**2. MessageLog:**
+**Chiến lược lưu trữ:**
 
-```kotlin
-data class MessageLog(
-    val level: LogLevel,        // VERBOSE, DEBUG, INFO, WARNING, ERROR
-    val category: LogCategory,  // GENERAL, CACHE, NETWORK, IMAGE, DECODE, TRANSFORM
-    val tag: String,
-    val message: String,
-    val throwable: Throwable? = null
-)
-```
+- **Storage**: File JSON trong external cache directory
+- **Expiration**: Tự động xóa sau 24 giờ
+- **Data**: Danh sách photos + page hiện tại + timestamp
 
-#### **LogViewer UI**
+**Luồng xử lý:**
 
-```kotlin
-class LogViewerActivity : AppCompatActivity() {
-    private lateinit var adapter: LogAdapter
-    private val selectedCategories = mutableSetOf<LogCategory>()
+1. **Initial Load**: Kiểm tra disk cache → Load nếu valid → Hiển thị ngay
+2. **Network Success**: Lưu xuống disk cache
+3. **App Restart**: Load từ disk cache (không cần network)
 
-    private val logListener: (LogEntry) -> Unit = { log ->
-        runOnUiThread {
-            adapter.addLog(log, selectedCategories)
-            recyclerView.smoothScrollToPosition(0) // Auto scroll to top
-            updateQuickStats()
-        }
-    }
+**Lợi ích:**
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        // Load existing logs
-        adapter.submitLogs(
-            ImageLoaderLogger.getAllLogs().reversed(),
-            selectedCategories
-        )
-
-        // Listen for new logs
-        ImageLoaderLogger.addListener(logListener)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        ImageLoaderLogger.removeListener(logListener)
-    }
-}
-```
-
-#### **Statistics Dashboard**
-
-```kotlin
-data class LogStats(
-    val totalLogs: Int,
-    val totalImageRequests: Int,
-    val imageErrors: Int,
-    val messageErrors: Int,
-    val jsonPhotoCount: Int,
-    val jsonCurrentPage: Int,
-
-    // Active Cache Stats
-    val activeCacheCount: Int,
-    val activeCacheAvgTime: Double,
-
-    // Memory Cache Stats
-    val memoryCacheCount: Int,
-    val memoryCacheAvgTime: Double,
-
-    // Disk Cache Stats
-    val diskCacheCount: Int,
-    val diskCacheAvgTime: Double,
-    val diskCacheAvgDecode: Double,
-    val diskCacheAvgTransform: Double,
-
-    // Network Stats
-    val networkCount: Int,
-    val networkAvgTime: Double,
-    val networkAvgFetch: Double,
-    val networkAvgDecode: Double,
-    val networkAvgTransform: Double
-)
-```
-
-**Cache Hit Rate Calculation:**
-
-```kotlin
-val totalRequests = activeCacheCount + memoryCacheCount + diskCacheCount + networkCount
-val memoryHitRate = ((activeCacheCount + memoryCacheCount).toFloat() / totalRequests * 100)
-val diskHitRate = (diskCacheCount.toFloat() / totalRequests * 100)
-```
-
-**Performance Insights:**
-
-- Memory hit rate > 80% → Cache size đủ lớn
-- Disk hit rate > 50% → User quay lại xem ảnh cũ nhiều
-- Network average > 500ms → Network chậm
-- Decode time > 100ms → Ảnh quá lớn, cần resize
-
-### 2.7 JSON Backup System
-
-#### **JsonBackupManager Implementation**
-
-```kotlin
-class JsonBackupManager(private val context: Context) {
-    private val gson = Gson()
-
-    private val backupFile: File
-        get() {
-            val cacheDir = context.externalCacheDir ?: context.cacheDir
-            if (!cacheDir.exists()) cacheDir.mkdirs()
-            return File(cacheDir, "photo_backup.json")
-        }
-
-    suspend fun saveBackup(photos: List<UnsplashPhoto>, currentPage: Int) {
-        withContext(Dispatchers.IO) {
-            try {
-                val backup = PhotoBackup(
-                    photos = photos,
-                    currentPage = currentPage,
-                    timestamp = System.currentTimeMillis()
-                )
-                val json = gson.toJson(backup)
-                backupFile.writeText(json)
-
-                // Sync với Logger stats
-                ImageLoaderLogger.jsonPhotoCount = photos.size
-                ImageLoaderLogger.jsonCurrentPage = currentPage
-
-                ImageLoaderLogger.i(
-                    TAG,
-                    "JSON backup saved: ${photos.size} photos, page $currentPage",
-                    LogCategory.CACHE
-                )
-            } catch (e: Exception) {
-                ImageLoaderLogger.e(TAG, "Failed to save JSON backup", e)
-            }
-        }
-    }
-
-    suspend fun loadBackup(): PhotoBackup? {
-        return withContext(Dispatchers.IO) {
-            try {
-                if (!backupFile.exists()) return@withContext null
-
-                val json = backupFile.readText()
-                val backup = gson.fromJson<PhotoBackup>(json, PhotoBackup::class.java)
-
-                // Check expiration (24 hours)
-                val oneDayAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
-                if (backup.timestamp < oneDayAgo) {
-                    ImageLoaderLogger.i(TAG, "JSON backup expired, deleting")
-                    backupFile.delete()
-                    return@withContext null
-                }
-
-                // Sync với Logger stats
-                ImageLoaderLogger.jsonPhotoCount = backup.photos.size
-                ImageLoaderLogger.jsonCurrentPage = backup.currentPage
-
-                ImageLoaderLogger.i(
-                    TAG,
-                    "JSON backup loaded: ${backup.photos.size} photos, page ${backup.currentPage}"
-                )
-
-                backup
-            } catch (e: Exception) {
-                ImageLoaderLogger.e(TAG, "Failed to load JSON backup", e)
-                backupFile.delete()
-                null
-            }
-        }
-    }
-}
-```
-
-**Data Model:**
-
-```kotlin
-data class PhotoBackup(
-    val photos: List<UnsplashPhoto>,
-    val currentPage: Int,
-    val timestamp: Long
-)
-```
-
-**Integration trong HomeViewModel:**
-
-```kotlin
-fun loadPhotos() {
-    viewModelScope.launch {
-        try {
-            // 1. Try loading backup first
-            val backup = backupManager.loadBackup()
-            if (backup != null && backup.photos.isNotEmpty()) {
-                currentPage = backup.currentPage
-                _uiState.value = HomeUiState.Data(backup.photos)
-                return@launch
-            }
-
-            // 2. Fetch from network
-            val photos = getRandomPhotosUseCase(perPage, 1)
-            _uiState.value = HomeUiState.Data(photos)
-
-            // 3. Save backup
-            backupManager.saveBackup(photos, currentPage)
-        } catch (e: Exception) {
-            handleError(e)
-        }
-    }
-}
-```
-
-**Benefits:**
-
-- **Offline support**: User vẫn xem được ảnh đã load trước đó
-- **Fast startup**: Không cần đợi network request
-- **Data persistence**: Giữ lại state khi app bị kill
+- **Offline support**: Xem ảnh cached khi offline
+- **Fast startup**: Load tức thì từ disk
+- **Data persistence**: Tồn tại khi app bị kill
 - **Bandwidth saving**: Giảm API calls không cần thiết
 
 ### 2.8 Network Monitoring & Auto-Retry
 
-#### **NetworkMonitor Implementation**
+#### **ConnectivityProvider**
 
-```kotlin
-class NetworkMonitor(context: Context) {
-    private val connectivityManager =
-        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+Cung cấp monitoring trạng thái mạng với reactive Flow:
 
-    fun isNetworkAvailable(): Boolean {
-        val network = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+**Tính năng:**
 
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }
-}
-```
+- Cập nhật trạng thái mạng real-time
+- States: Available, Unavailable, Losing, Lost
+- Tích hợp trong ViewModel (không phải Activity)
 
 #### **Error Handling System**
 
-```kotlin
-sealed class AppError {
-    data class NetworkError(val message: String) : AppError()
-    data class RateLimitError(val retryAfter: Long = 60_000) : AppError()
-    data class ServerError(val code: Int, val message: String) : AppError()
-    data class UnknownError(val message: String) : AppError()
-}
+**Các loại AppError:**
 
-object ErrorHandler {
-    fun handleError(throwable: Throwable): AppError = when (throwable) {
-        is UnknownHostException,
-        is SocketTimeoutException -> AppError.NetworkError(
-            "Không thể kết nối đến server. Vui lòng kiểm tra kết nối Internet."
-        )
+- `NetworkError`: Lỗi kết nối (timeout, mất internet)
+- `RateLimitError`: Vượt giới hạn API (mặc định retry sau 60s)
+- `ServerError`: Lỗi server (500, 502, 503)
+- `UnknownError`: Lỗi không xác định
 
-        is IOException -> AppError.NetworkError("Lỗi kết nối mạng. Vui lòng thử lại.")
-        else -> {
-            val message = throwable.message ?: "Đã xảy ra lỗi không xác định"
-            when {
-                message.contains("403") || message.contains("rate limit", ignoreCase = true) ->
-                    AppError.RateLimitError()
+**ErrorMapper**: Chuyển đổi exceptions → AppError types
 
-                message.contains("500") || message.contains("502") || message.contains("503") ->
-                    AppError.ServerError(500, "Server đang gặp sự cố. Vui lòng thử lại sau.")
+#### **Chiến Lược Auto-Retry**
 
-                else -> AppError.UnknownError(message)
-            }
-        }
-    }
+**Quy tắc retry:**
 
-    fun getErrorMessage(error: AppError): String = when (error) {
-        is AppError.NetworkError -> error.message
-        is AppError.RateLimitError -> "Đã vượt giới hạn request. Vui lòng đợi ${error.retryAfter / 1000}s."
-        is AppError.ServerError -> error.message
-        is AppError.UnknownError -> error.message
-    }
+- **NetworkError**: Retry sau 3s (nếu đã online)
+- **RateLimitError**: Retry sau thời gian `retryAfter`
+- **ServerError 503**: Retry sau 5s
+- **Lỗi khác**: Không auto-retry (hiển thị snackbar)
 
-    fun shouldRetry(error: AppError): Boolean = when (error) {
-        is AppError.NetworkError -> true
-        is AppError.RateLimitError -> true
-        is AppError.ServerError -> error.code == 503
-        is AppError.UnknownError -> false
-    }
-
-    fun getRetryDelay(error: AppError): Long = when (error) {
-        is AppError.NetworkError -> 3000L
-        is AppError.RateLimitError -> error.retryAfter
-        is AppError.ServerError -> 5000L
-        is AppError.UnknownError -> 0L
-    }
-}
-```
-
-#### **Auto-Retry trong ViewModel**
-
-```kotlin
-private fun scheduleRetry(error: AppError) {
-    retryJob?.cancel()
-    retryJob = viewModelScope.launch {
-        val delay = ErrorHandler.getRetryDelay(error)
-        Log.d(TAG, "Scheduling retry in ${delay}ms")
-        delay(delay)
-
-        // Check network before retry
-        if (!networkMonitor.isNetworkAvailable()) {
-            Log.d(TAG, "Still offline, skip retry")
-            return@launch
-        }
-
-        Log.d(TAG, "Auto retrying...")
-        loadPhotos()
-    }
-}
-```
+**Cài đặt:** ViewModel lên lịch retry với coroutine delay, kiểm tra network trước khi retry
 
 ---
 
@@ -841,22 +381,39 @@ image-loader/
     │   ├── core/
     │   │   ├── base/
     │   │   │   └── BaseApiService.kt   # Base class cho API services
+    │   │   ├── config/
+    │   │   │   ├── AppConfig.kt        # App configuration
+    │   │   │   └── NetworkConfig.kt    # Network configuration
     │   │   ├── constants/
     │   │   │   └── Constants.kt        # API keys & base URL
     │   │   ├── customView/
-    │   │   │   └── FPSOverlay.kt       # FPS overlay widget
+    │   │   │   ├── FPSOverlay.kt       # FPS overlay widget
+    │   │   │   └── RatioImageView.kt   # Aspect ratio image view
+    │   │   ├── di/
+    │   │   │   ├── AppContainer.kt     # Root DI container
+    │   │   │   ├── NetworkModule.kt    # Network dependencies
+    │   │   │   └── HomeModule.kt       # Home feature dependencies
     │   │   ├── error/
-    │   │   │   └── ErrorHandler.kt     # AppError sealed class + handling logic
+    │   │   │   └── ErrorHandler.kt     # Legacy error handler
     │   │   ├── helpers/
-    │   │   │   └── Helpers.kt          # JSON parsing helper
-    │   │   └── network/
-    │   │       └── NetworkMonitor.kt   # Network status
-    │   │
-    │   ├── di/
-    │   │   └── Injector.kt             # Manual DI (HttpClient injection)
+    │   │   │   └── Helpers.kt          # Utility helpers
+    │   │   ├── platform/
+    │   │   │   ├── ConnectivityProvider.kt     # Interface + Android impl
+    │   │   │   ├── FileStorageProvider.kt      # Interface + Android impl
+    │   │   │   └── NetworkStatus.kt            # Network status enum
+    │   │   └── ui/
+    │   │       └── base/
+    │   │           ├── BaseActivity.kt         # Base activity
+    │   │           └── BaseViewModel.kt        # Base ViewModel
     │   │
     │   ├── network/
     │   │   └── HttpClient.kt           # Custom HTTP client (không dùng Retrofit)
+    │   │
+    │   ├── shared/
+    │   │   ├── result/
+    │   │   │   └── Result.kt           # Result<T, E> wrapper
+    │   │   └── error/
+    │   │       └── ErrorMapper.kt      # Exception → AppError mapper
     │   │
     │   ├── ui/
     │   │   └── theme/                  # Compose theme scaffolding
@@ -867,30 +424,56 @@ image-loader/
     │   ├── modules/
     │   │   ├── home/
     │   │   │   ├── data/
-    │   │   │   │   ├── remote/
-    │   │   │   │   │   └── UnsplashApi.kt      # Interface + Implementation
-    │   │   │   │   ├── repository/
-    │   │   │   │   │   └── PhotoRepositoryImpl.kt
-    │   │   │   │   └── cache/
-    │   │   │   │       ├── JsonBackupManager.kt    # JSON persistence
-    │   │   │   │       └── PhotoPreloader.kt       # Preload logic
+    │   │   │   │   ├── model/          # DTOs (Data Transfer Objects)
+    │   │   │   │   │   ├── UnsplashPhotoDTO.kt
+    │   │   │   │   │   ├── UnsplashUrlsDTO.kt
+    │   │   │   │   │   ├── UnsplashLinksDTO.kt
+    │   │   │   │   │   └── UnsplashUserDTO.kt
+    │   │   │   │   ├── mapper/
+    │   │   │   │   │   └── PhotoMapper.kt      # DTO → Domain mapper
+    │   │   │   │   ├── source/
+    │   │   │   │   │   ├── remote/
+    │   │   │   │   │   │   └── UnsplashRemoteDataSource.kt
+    │   │   │   │   │   └── local/
+    │   │   │   │   │       ├── PhotoDiskCache.kt       # JSON file cache
+    │   │   │   │   │       ├── PhotoMemoryCache.kt     # Preload cache
+    │   │   │   │   │       └── PhotoLocalDataSource.kt # Facade
+    │   │   │   │   └── repository/
+    │   │   │   │       └── PhotoRepositoryImpl.kt
     │   │   │   │
     │   │   │   ├── domain/
     │   │   │   │   ├── model/
-    │   │   │   │   │   └── UnsplashPhoto.kt    # @Serializable model
+    │   │   │   │   │   ├── UnsplashPhoto.kt    # Pure Kotlin model
+    │   │   │   │   │   ├── UnsplashUrls.kt
+    │   │   │   │   │   ├── UnsplashLinks.kt
+    │   │   │   │   │   ├── UnsplashUser.kt
+    │   │   │   │   │   └── LoadPhotoResult.kt  # Use case result wrapper
     │   │   │   │   ├── repository/
     │   │   │   │   │   └── PhotoRepository.kt
     │   │   │   │   └── usecase/
-    │   │   │   │       └── GetRandomPhotosUseCase.kt
+    │   │   │   │       ├── LoadInitialPhotosUseCase.kt
+    │   │   │   │       ├── RefreshPhotosUseCase.kt
+    │   │   │   │       ├── LoadMorePhotosUseCase.kt
+    │   │   │   │       ├── PreloadPhotosUseCase.kt
+    │   │   │   │       └── GetCachedPhotosUseCase.kt
     │   │   │   │
     │   │   │   └── presentation/
     │   │   │       ├── HomeActivity.kt
     │   │   │       ├── HomeViewModel.kt
-    │   │   │       └── adapter/
-    │   │   │           └── PhotoAdapter.kt
+    │   │   │       ├── HomeViewModelFactory.kt
+    │   │   │       ├── HomeIntent.kt           # MVI intents
+    │   │   │       ├── HomeUiState.kt          # MVI UI states
+    │   │   │       ├── adapter/
+    │   │   │       │   └── PhotoAdapter.kt
+    │   │   │       └── components/
+    │   │   │           ├── PhotoGridManager.kt
+    │   │   │           ├── ScrollLoadMoreHandler.kt
+    │   │   │           └── SettingsBottomSheetHelper.kt
     │   │   │
     │   │   └── splash/
     │   │       └── SplashActivity.kt
+    │   │
+    │   └── MyApplication.kt            # Application class
     │
     └── src/main/res/
         ├── layout/
@@ -1082,356 +665,492 @@ fun release() {
 
 #### **4.2.2 MemoryCache (LRU)**
 
-`ImageLoader/src/main/java/com/example/imageloader/cache/MemoryCache.kt`
+**Cài đặt:** `LruCache<String, Bitmap>` với `sizeOf = allocationByteCount`
 
-- Dựa trên `LruCache<String, Bitmap>` với `sizeOf = allocationByteCount`.
-- Khi eviction xảy ra, bitmap mutable sẽ được đẩy sang `BitmapPool` để tái sử dụng.
-- API chính: `get`, `put`, `remove`, `clear`, `size`.
+**Tính năng chính:**
 
-```kotlin
-override fun entryRemoved(evicted: Boolean, key: String?, oldValue: Bitmap?, newValue: Bitmap?) {
-    if (evicted && oldValue?.isMutable == true && !oldValue.isRecycled) {
-        bitmapPool?.put(oldValue)
-    }
-}
-```
+- Tự động eviction khi đầy
+- Evicted bitmaps → BitmapPool (tái sử dụng)
+- Thread-safe operations
 
 #### **4.2.3 DiskCache**
 
-`ImageLoader/src/main/java/com/example/imageloader/cache/DiskCache.kt`
+**Chiến lược lưu trữ:**
 
-- Lưu raw bytes với phần mở rộng dựa trên `contentType`, chỉ ghi file mới khi chưa tồn tại.
-- Trước khi ghi, `ensureSizeInitialized()` cập nhật tổng size và `trimCacheAsync()` dọn file cũ nhất
-  nếu vượt 150 MB mặc định.
-- Ghi dữ liệu theo pattern `temp → rename` để đảm bảo atomic write, nên nếu app crash giữa chừng
-  cache vẫn không corrupt.
+- Raw bytes với extension theo `contentType`
+- Đặt tên file: `MD5(key).{jpg|png|webp|avif|dat}`
+- Kích thước tối đa: 150 MB (mặc định)
+- Atomic write: pattern `temp → rename`
 
-```kotlin
-@Synchronized
-fun put(key: String, data: ByteArray, contentType: String?): Boolean {
-    ensureSizeInitialized()
-    val file = File(cacheDir, "$key${extensionOf(contentType)}")
-    if (file.exists()) return true
-
-    if (currentSize + data.size > maxSizeBytes) {
-        trimCacheAsync(currentSize + data.size - maxSizeBytes)
-    }
-
-    val temp = File(cacheDir, "${file.name}.tmp")
-    return try {
-        FileOutputStream(temp).use { it.write(data) }
-        temp.renameTo(file).also { success ->
-            if (success) currentSize += data.size else temp.delete()
-        }
-    } catch (ioe: IOException) {
-        temp.delete(); false
-    }
-}
-```
-
-**File organization:** `key = MD5(dataKey)` kết hợp extension (`.jpg/.png/.webp/.avif/.dat`).
-Trimming dựa trên `lastModified` nên file ít dùng nhất bị xóa trước.
+**Trimming:** Tự động dọn dẹp file cũ theo `lastModified` khi vượt limit
 
 #### **4.2.4 LruBitmapPool**
 
-`ImageLoader/src/main/java/com/example/imageloader/core/LruBitmapPool.kt`
+**Chiến lược tái sử dụng:**
 
-- Lưu bitmap mutable trong `LinkedHashMap` (LRU) để tái sử dụng thông qua `BitmapFactory.inBitmap`.
-- `get()` ưu tiên exact match, nếu không tìm thấy sẽ lấy bitmap lớn hơn và `reconfigure()` về kích
-  thước mới.
-- `put()` bỏ qua bitmap quá lớn (chiếm >50% pool) để tránh nghẽn.
-- `trimToSize()` recycle bớt khi vượt ngưỡng.
+- Lưu trữ mutable bitmaps trong `LinkedHashMap` (LRU)
+- Ưu tiên: Exact match → Bitmap lớn hơn + reconfigure
+- Bỏ qua bitmaps quá lớn (>50% pool)
 
-```kotlin
-override fun get(width: Int, height: Int, config: Bitmap.Config): Bitmap? {
-    val exact = map[key(width, height, config)]?.removeFirstOrNull { it.canReuse() }
-    if (exact != null) return exact.also { currentSize -= it.safeByteCount() }
-
-    return map.entries
-        .firstOrNull { (k, _) -> k.config == config && k.width >= width && k.height >= height }
-        ?.value
-        ?.removeFirstOrNull { it.canReuse() }
-        ?.apply { reconfigure(width, height, config) }
-}
-```
-
-**Khi nào cần dùng:**
-
-- RecyclerView với ảnh cùng size
-- Multiple requests cho cùng dimensions
-- Varied image sizes
-- Low memory devices
+**Trường hợp sử dụng:** RecyclerView, galleries, thiết bị RAM thấp
 
 ### 4.3 Fetcher & Decoder
 
 #### **4.3.1 HttpFetcher**
 
-`ImageLoader/src/main/java/com/example/imageloader/fetcher/HttpFetcher.kt`
+**Tính năng:**
 
-- `ConnectionFactory` (functional interface) giúp mock `HttpURLConnection` trong unit test.
-- Retry tối đa 2 lần với exponential delay (`700ms`, `1400ms`).
-- Ghi log qua `ImageLoaderLogger` mỗi lần retry.
-
-```kotlin
-override suspend fun fetch(url: String): HttpResult {
-    var lastError: Exception? = null
-    repeat(maxRetries) { attempt ->
-        runCatching {
-            connectionFactory.open(url).apply {
-                connectTimeout = 5_000
-                readTimeout = 5_000
-                requestMethod = "GET"
-                doInput = true
-                connect()
-            }.run {
-                if (responseCode != HttpURLConnection.HTTP_OK) error("HTTP $responseCode")
-                return HttpResult(
-                    inputStream.use { it.readBytes() },
-                    contentType
-                ).also { disconnect() }
-            }
-        }.onFailure {
-            lastError = it
-            if (attempt < maxRetries - 1) delay(retryDelayMillis * (1L shl attempt))
-        }
-    }
-    throw lastError ?: IOException("Unknown error fetching $url")
-}
-```
+- `ConnectionFactory` interface (có thể test)
+- Retry: Tối đa 2 lần với exponential backoff (700ms, 1400ms)
+- Timeout: 5s connect + 5s read
+- Logging qua `ImageLoaderLogger`
 
 #### **4.3.2 BitmapDecoder**
 
-`ImageLoader/src/main/java/com/example/imageloader/decode/BitmapDecoder.kt`
+**Chiến lược decode:**
 
-- Đọc bounds trước (`inJustDecodeBounds = true`) để tính `inSampleSize` → tránh decode bitmap quá
-  lớn.
-- Khi `useBitmapPool` bật, truyền `inBitmap` từ pool để reuse memory; nếu `IllegalArgumentException`
-  xảy ra thì retry không dùng pool.
-- Trích xuất dominant color cho placeholder thông qua `Palette` (dùng bản decode nhỏ 10×10).
+- Đọc bounds trước (`inJustDecodeBounds`) → Tính `inSampleSize`
+- Tái sử dụng `inBitmap` từ pool (fallback nếu thất bại)
+- Trích xuất dominant color cho placeholder (Palette API)
 
-```kotlin
-fun decode(bytes: ByteArray, reqW: Int, reqH: Int): Bitmap {
-    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-    opts.inSampleSize = calculateInSampleSize(opts.outWidth, opts.outHeight, reqW, reqH)
-    opts.inJustDecodeBounds = false
-    if (useBitmapPool) opts.inBitmap = bitmapPool?.get(
-        opts.outWidth / opts.inSampleSize,
-        opts.outHeight / opts.inSampleSize,
-        Bitmap.Config.ARGB_8888
-    )
-    return try {
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-    } catch (_: IllegalArgumentException) {
-        opts.inBitmap = null
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-    }
-}
-```
+**Downsampling:** Tự động giảm kích thước để tránh OOM
 
 ### 4.4 Transformation System
 
-#### **4.4.1 Transformation Interface**
+**Transformation Interface:** Biến đổi bitmap trước khi deliver
 
-```kotlin
-interface Transformation {
-    fun transform(
-        pool: BitmapPool,
-        toTransform: Bitmap,
-        outWidth: Int,
-        outHeight: Int
-    ): Bitmap
+**Built-in:**
 
-    fun key(): String
-}
-```
+- `CenterCropRoundedCorners`: Scale + crop + bo góc
+- `BaseTransformation`: Base class cho custom transforms
 
-**BaseTransformation:**
+**Ví dụ custom:** Extend `BaseTransformation`, implement `transform()` và `key()`
 
-```kotlin
-abstract class BaseTransformation(private val id: String) : Transformation {
-    override fun key(): String = id
+**Yêu cầu chính:**
 
-    protected fun createBitmap(
-        width: Int,
-        height: Int,
-        config: Bitmap.Config
-    ): Bitmap {
-        return Bitmap.createBitmap(width, height, config)
-    }
-
-    override fun equals(other: Any?): Boolean {
-        return other is BaseTransformation && other.id == id
-    }
-
-    override fun hashCode(): Int = id.hashCode()
-}
-```
-
-#### **4.4.2 CenterCropRoundedCorners**
-
-Đã phân tích ở phần trước.
-
-#### **4.4.3 Custom Transformation Example**
-
-```kotlin
-class GrayscaleTransformation : BaseTransformation("Grayscale") {
-    override fun transform(
-        pool: BitmapPool,
-        toTransform: Bitmap,
-        outWidth: Int,
-        outHeight: Int
-    ): Bitmap {
-        val width = toTransform.width
-        val height = toTransform.height
-
-        val result = createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-
-        val paint = Paint().apply {
-            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply {
-                setSaturation(0f) // Grayscale
-            })
-        }
-
-        canvas.drawBitmap(toTransform, 0f, 0f, paint)
-
-        return result
-    }
-}
-```
-
-**Usage:**
-
-```kotlin
-ImageLoader.with(context)
-    .load(url)
-    .transform(GrayscaleTransformation())
-    .into(imageView)
-```
+- `key()` duy nhất cho cache differentiation
+- Sử dụng `BitmapPool` để tiết kiệm bộ nhớ
+- Xử lý bitmap recycling đúng cách
 
 ### 4.5 Logger & Monitoring
 
-Đã phân tích chi tiết ở phần 2.6.
+Chi tiết xem Section 2.6 - Real-time Logging System
 
 ---
 
 ## 5. Chi Tiết App Module
 
-### 5.1 Kiến Trúc Clean Architecture
+### 5.1 Kiến Trúc Clean Architecture + MAD
 
-App module áp dụng **Clean Architecture** với 3 layers:
+App module áp dụng **Clean Architecture** kết hợp **Modern Android Development (MAD)** với 3 layers
+rõ ràng:
 
 ```
-Presentation Layer (UI + ViewModel)
+Presentation Layer (Activity + ViewModel + State)
        ↓ (uses)
 Domain Layer (Use Cases + Models + Repository Interface)
        ↓ (implements)
-Data Layer (Repository Impl + API + Cache)
+Data Layer (Repository Impl + DataSources + Mappers)
 ```
 
 **Dependency Rule:**
 
-- Presentation → Domain
-- Data → Domain
-- Domain không phụ thuộc vào layer nào
+- Presentation → Domain (chỉ biết Use Cases và Models)
+- Data → Domain (implement Repository Interface)
+- Domain hoàn toàn độc lập, không phụ thuộc bất kỳ layer nào
+
+**Key Architectural Principles:**
+
+- **Single Source of Truth**: UI state được quản lý tập trung trong ViewModel
+- **Unidirectional Data Flow**: UI → Intent → ViewModel → State → UI
+- **Separation of Concerns**: Mỗi layer có trách nhiệm riêng biệt
+- **Dependency Inversion**: Layers phụ thuộc vào abstractions (interfaces), không phụ thuộc vào
+  concrete implementations
 
 **Benefits:**
 
-- **Testability**: Dễ mock dependencies
-- **Independence**: UI, database, framework có thể thay đổi
-- **Maintainability**: Separation of concerns rõ ràng
+- **Testability**: Dễ dàng mock dependencies cho unit tests
+- **Independence**: UI, database, network có thể thay đổi mà không ảnh hưởng domain logic
+- **Maintainability**: Code rõ ràng, dễ maintain và scale
+- **MAD Compliance**: Tuân thủ các best practices của Google Android
 
-### 5.2 Home Module
+### 5.2 Dependency Injection Architecture
 
-#### **5.2.1 Domain Layer**
+#### **5.2.1 Cấu Trúc DI Container**
 
-**UnsplashPhoto Model:**
+Project sử dụng **Manual Dependency Injection** với module-based approach:
 
-Sử dụng **Kotlinx Serialization** với `@Serializable` annotation:
+**AppContainer** (Root):
+
+- Platform providers (ConnectivityProvider, FileStorageProvider)
+- NetworkModule (HttpClient)
+- Feature modules (HomeModule)
+
+**HomeModule** cung cấp:
+
+- Mappers (PhotoMapper, ErrorMapper)
+- Data sources (Remote + Local)
+- Repository implementation
+- 5 Use cases
+- ViewModelFactory
+
+**Lợi ích:**
+
+- Cô lập scope theo module
+- Khởi tạo lazy
+- Type-safe tại compile-time
+- Dễ test (swap implementations)
+- Không có overhead của reflection
+
+### 5.3 Domain Layer
+
+#### **5.3.1 Domain Models**
+
+Domain layer sử dụng **pure Kotlin data classes**:
+
+**Nguyên tắc chính:**
+
+- Không có framework annotations (`@Serializable`, `@Json`)
+- Immutable (properties dùng `val`)
+- Xử lý null rõ ràng
+- Độc lập với platform
+
+**Models:** `UnsplashPhoto`, `UnsplashUrls`, `UnsplashLinks`, `UnsplashUser`, `LoadPhotoResult`
+
+#### **5.3.2 Repository Interface**
+
+```kotlin
+interface PhotoRepository {
+    suspend fun loadInitialPhotos(): Result<LoadPhotoResult, AppError>
+    suspend fun refreshPhotos(): Result<List<UnsplashPhoto>, AppError>
+    suspend fun loadMorePhotos(page: Int): Result<List<UnsplashPhoto>, AppError>
+    suspend fun preloadPhotos(page: Int): Result<Unit, AppError>
+    suspend fun getCachedPhotos(): Result<List<UnsplashPhoto>, AppError>
+}
+```
+
+**Result Type:**
+
+```kotlin
+sealed class Result<out T, out E> {
+    data class Success<T>(val data: T) : Result<T, Nothing>()
+    data class Error<E>(val error: E) : Result<Nothing, E>()
+}
+```
+
+**LoadPhotoResult:**
+
+```kotlin
+data class LoadPhotoResult(
+    val photos: List<UnsplashPhoto>,
+    val currentPage: Int,
+    val isFromCache: Boolean
+)
+```
+
+#### **5.3.3 Use Cases**
+
+Mỗi use case = 1 business operation theo **Single Responsibility Principle**:
+
+| Use Case              | Chiến lược                    | Sử dụng          |
+|-----------------------|-------------------------------|------------------|
+| **LoadInitialPhotos** | Disk cache → Network          | Load ban đầu     |
+| **RefreshPhotos**     | Force network, bỏ qua cache   | Pull-to-refresh  |
+| **LoadMorePhotos**    | Preloaded cache → Network     | Phân trang       |
+| **PreloadPhotos**     | Silent network → Memory cache | Prefetch nền     |
+| **GetCachedPhotos**   | Chỉ disk cache                | Fallback offline |
+
+**Lợi ích:** Đơn trách nhiệm, có thể test, tái sử dụng, composable
+
+### 5.4 Data Layer
+
+#### **5.4.1 Data Models (DTOs)**
+
+Data layer sử dụng DTOs với `@Serializable` cho network deserialization:
 
 ```kotlin
 @Serializable
-data class UnsplashPhoto(
+data class UnsplashPhotoDTO(
     val id: String,
     val created_at: String,
     val width: Int,
     val height: Int,
-    val color: String? = "#000000",
-    val likes: Int,
-    val description: String?,
-    val alt_description: String?,
-    val urls: UnsplashUrls,
-    val links: UnsplashLinks,
-    val user: UnsplashUser
+    val color: String? = null,
+    val likes: Int = 0,
+    val description: String? = null,
+    val urls: UnsplashUrlsDTO,
+    val links: UnsplashLinksDTO,
+    val user: UnsplashUserDTO
 )
 
 @Serializable
-data class UnsplashUrls(
-    val raw: String?,
-    val full: String?,
-    val regular: String?,
-    val small: String?,
-    val thumb: String?
-)
-
-@Serializable
-data class UnsplashLinks(
-    val self: String,
-    val html: String,
-    val download: String,
-    val download_location: String
-)
-
-@Serializable
-data class UnsplashUser(
-    val id: String,
-    val username: String,
-    val name: String,
-    val profile_image: ProfileImage?
-)
-
-@Serializable
-data class ProfileImage(
-    val small: String,
-    val medium: String,
-    val large: String
+data class UnsplashUrlsDTO(
+    val raw: String? = null,
+    val full: String? = null,
+    val regular: String? = null,
+    val small: String? = null,
+    val thumb: String? = null,
+    val medium: String? = null,
+    val large: String? = null
 )
 ```
 
-**Key Points về Kotlinx Serialization:**
+**DTOs vs Domain Models:**
 
-- `@Serializable`: Annotation để generate serializer tự động
-- **Type-safe**: Compile-time checking
-- **Lightweight**: Nhẹ hơn Gson/Moshi
-- **Kotlin-first**: Hỗ trợ tốt cho Kotlin features (default values, nullability)
-- **No reflection**: Sử dụng code generation thay vì reflection
+- **DTOs**: Chứa `@Serializable`, nullable với defaults, dùng cho network layer
+- **Domain Models**: Pure Kotlin, immutable, không có framework dependencies
+- **Mapper**: Convert DTO → Domain model
 
-**PhotoRepository Interface:**
+#### **5.4.2 PhotoMapper**
 
 ```kotlin
-interface PhotoRepository {
-    suspend fun getRandomPhotos(count: Int, page: Int): List<UnsplashPhoto>
-}
-```
+class PhotoMapper {
+    fun toDomain(dto: UnsplashPhotoDTO): UnsplashPhoto {
+        return UnsplashPhoto(
+            id = dto.id,
+            created_at = dto.created_at,
+            width = dto.width,
+            height = dto.height,
+            color = dto.color,
+            likes = dto.likes,
+            description = dto.description,
+            alt_description = null,
+            urls = toDomain(dto.urls),
+            links = toDomain(dto.links),
+            user = toDomain(dto.user)
+        )
+    }
 
-**GetRandomPhotosUseCase:**
-
-```kotlin
-class GetRandomPhotosUseCase(private val repository: PhotoRepository) {
-    suspend operator fun invoke(count: Int, page: Int): List<UnsplashPhoto> {
-        return repository.getRandomPhotos(count, page)
+    fun toDomainList(dtos: List<UnsplashPhotoDTO>): List<UnsplashPhoto> {
+        return dtos.map { toDomain(it) }
     }
 }
 ```
 
-**Why Use Case?**
+**Benefits:**
 
-- **Single Responsibility**: Mỗi use case = 1 business logic
-- **Reusability**: Có thể dùng ở nhiều màn hình
-- **Testability**: Dễ test business logic riêng
+- **Separation**: Network models tách biệt với domain models
+- **Null safety**: DTOs có defaults, domain models explicit nullability
+- **Evolution**: Có thể thay đổi API response mà không ảnh hưởng domain
 
-#### **5.2.2 Data Layer**
+#### **5.4.3 Data Sources Pattern**
+
+**UnsplashRemoteDataSource:**
+
+```kotlin
+class UnsplashRemoteDataSource(
+    private val httpClient: HttpClient
+) : BaseApiService(httpClient) {
+
+    suspend fun getPhotos(page: Int, perPage: Int): List<UnsplashPhotoDTO> {
+        return get(
+            path = "photos",
+            query = mapOf(
+                "page" to page.toString(),
+                "per_page" to perPage.toString()
+            ),
+            deserializer = ListSerializer(UnsplashPhotoDTO.serializer())
+        )
+    }
+}
+```
+
+**PhotoLocalDataSource:**
+
+```kotlin
+class PhotoLocalDataSource(
+    private val diskCache: PhotoDiskCache,
+    private val memoryCache: PhotoMemoryCache
+) {
+    // Disk cache operations
+    suspend fun savePhotosToDisk(photos: List<UnsplashPhoto>, page: Int) {
+        diskCache.savePhotos(photos, page)
+    }
+
+    suspend fun loadPhotosFromDisk(): PhotoDiskCache.CachedData? {
+        return diskCache.loadPhotos()
+    }
+
+    // Memory cache (preload) operations
+    fun savePhotosToMemory(page: Int, photos: List<UnsplashPhoto>) {
+        memoryCache.put(page, photos)
+    }
+
+    fun getPhotosFromMemory(page: Int): List<UnsplashPhoto>? {
+        return memoryCache.get(page)
+    }
+
+    fun clearMemoryCache() {
+        memoryCache.clear()
+    }
+}
+```
+
+**PhotoDiskCache:**
+
+```kotlin
+class PhotoDiskCache(
+    private val fileStorageProvider: FileStorageProvider
+) {
+    private val cacheFile: File
+        get() = File(
+            fileStorageProvider.getExternalCacheDir() ?: fileStorageProvider.getCacheDir(),
+            CACHE_FILE_NAME
+        )
+
+    data class CachedData(
+        val photos: List<UnsplashPhoto>,
+        val currentPage: Int,
+        val timestamp: Long
+    )
+
+    suspend fun savePhotos(photos: List<UnsplashPhoto>, currentPage: Int) {
+        withContext(Dispatchers.IO) {
+            val data = CachedData(
+                photos = photos,
+                currentPage = currentPage,
+                timestamp = System.currentTimeMillis()
+            )
+            val json = gson.toJson(data)
+            cacheFile.writeText(json)
+        }
+    }
+
+    suspend fun loadPhotos(): CachedData? {
+        return withContext(Dispatchers.IO) {
+            if (!cacheFile.exists()) return@withContext null
+
+            val json = cacheFile.readText()
+            val data = gson.fromJson(json, CachedData::class.java)
+
+            // Check expiry (24 hours)
+            val isExpired = System.currentTimeMillis() - data.timestamp > CACHE_DURATION_MS
+            if (isExpired) {
+                cacheFile.delete()
+                null
+            } else {
+                data
+            }
+        }
+    }
+}
+```
+
+**PhotoMemoryCache:**
+
+```kotlin
+class PhotoMemoryCache {
+    private val cache = mutableMapOf<Int, List<UnsplashPhoto>>()
+
+    fun put(page: Int, photos: List<UnsplashPhoto>) {
+        synchronized(cache) {
+            cache[page] = photos
+            cleanupOldPages(page)
+        }
+    }
+
+    fun get(page: Int): List<UnsplashPhoto>? {
+        return synchronized(cache) {
+            cache[page]
+        }
+    }
+
+    private fun cleanupOldPages(currentPage: Int) {
+        val keysToRemove = cache.keys.filter { it < currentPage - 1 }
+        keysToRemove.forEach { cache.remove(it) }
+    }
+}
+```
+
+**Benefits of Data Sources Pattern:**
+
+- **Single Responsibility**: Remote chỉ lo network, Local chỉ lo cache
+- **Testability**: Dễ mock từng data source
+- **Flexibility**: Có thể swap implementations (e.g., Room database)
+
+#### **5.4.4 PhotoRepositoryImpl**
+
+```kotlin
+class PhotoRepositoryImpl(
+    private val remoteDataSource: UnsplashRemoteDataSource,
+    private val localDataSource: PhotoLocalDataSource,
+    private val photoMapper: PhotoMapper,
+    private val errorMapper: ErrorMapper
+) : PhotoRepository {
+
+    override suspend fun loadInitialPhotos(): Result<LoadPhotoResult, AppError> {
+        return try {
+            // Try disk cache first
+            val cachedData = localDataSource.loadPhotosFromDisk()
+            if (cachedData != null) {
+                return Result.Success(
+                    LoadPhotoResult(
+                        photos = cachedData.photos,
+                        currentPage = cachedData.currentPage,
+                        isFromCache = true
+                    )
+                )
+            }
+
+            // Fetch from network
+            val photosDTO = remoteDataSource.getPhotos(page = 1, perPage = AppConfig.PER_PAGE)
+            val photos = photoMapper.toDomainList(photosDTO)
+
+            // Save to disk cache
+            localDataSource.savePhotosToDisk(photos, currentPage = 1)
+
+            Result.Success(
+                LoadPhotoResult(
+                    photos = photos,
+                    currentPage = 1,
+                    isFromCache = false
+                )
+            )
+        } catch (e: Exception) {
+            Result.Error(errorMapper.mapError(e))
+        }
+    }
+
+    override suspend fun loadMorePhotos(page: Int): Result<List<UnsplashPhoto>, AppError> {
+        return try {
+            // Check memory cache (preloaded) first
+            val cachedPhotos = localDataSource.getPhotosFromMemory(page)
+            if (cachedPhotos != null) {
+                return Result.Success(cachedPhotos)
+            }
+
+            // Fetch from network
+            val photosDTO = remoteDataSource.getPhotos(page, AppConfig.PER_PAGE)
+            val photos = photoMapper.toDomainList(photosDTO)
+
+            Result.Success(photos)
+        } catch (e: Exception) {
+            Result.Error(errorMapper.mapError(e))
+        }
+    }
+
+    override suspend fun preloadPhotos(page: Int): Result<Unit, AppError> {
+        return try {
+            val photosDTO = remoteDataSource.getPhotos(page, AppConfig.PER_PAGE)
+            val photos = photoMapper.toDomainList(photosDTO)
+            localDataSource.savePhotosToMemory(page, photos)
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(errorMapper.mapError(e))
+        }
+    }
+}
+```
+
+**Repository Strategy:**
+
+- **loadInitialPhotos**: Disk cache → Network → Save disk
+- **loadMorePhotos**: Memory cache (preload) → Network
+- **refreshPhotos**: Force network → Clear caches → Save disk
+- **preloadPhotos**: Silent network → Memory cache only
+- **getCachedPhotos**: Disk cache only (offline)
+
+#### **5.4.5 HttpClient & BaseApiService**
 
 **HttpClient (Custom Implementation):**
 
@@ -1507,264 +1226,346 @@ open class BaseApiService(
 }
 ```
 
-**UnsplashApi Interface & Implementation:**
-
-```kotlin
-interface UnsplashApi {
-    suspend fun getRandomPhotos(page: Int, perPage: Int = 10): List<UnsplashPhoto>
-}
-
-class UnsplashApiImpl(
-    client: HttpClient
-) : BaseApiService(client), UnsplashApi {
-
-    override suspend fun getRandomPhotos(page: Int, perPage: Int): List<UnsplashPhoto> {
-        return get(
-            path = "photos",
-            query = mapOf(
-                "page" to page.toString(),
-                "per_page" to perPage.toString()
-            ),
-            deserializer = ListSerializer(UnsplashPhoto.serializer())
-        )
-    }
-}
-```
-
-**PhotoRepositoryImpl:**
-
-```kotlin
-class PhotoRepositoryImpl(private val api: UnsplashApi) : PhotoRepository {
-    override suspend fun getRandomPhotos(count: Int, page: Int): List<UnsplashPhoto> {
-        return api.getRandomPhotos(page = page, perPage = count)
-    }
-}
-```
-
-**Dependency Injection (Injector.kt):**
-
-```kotlin
-object Injector {
-    private const val BASE_URL = "https://api.unsplash.com/"
-    private const val ACCESS_KEY = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-    // HttpClient singleton
-    private val httpClient by lazy { HttpClient(BASE_URL, ACCESS_KEY) }
-
-    // API implementation
-    private val unsplashApi: UnsplashApi by lazy { UnsplashApiImpl(httpClient) }
-
-    // Repository
-    private val photoRepository: PhotoRepository by lazy {
-        PhotoRepositoryImpl(unsplashApi)
-    }
-
-    // Use case (public để Activity/ViewModel access)
-    val getRandomPhotosUseCase: GetRandomPhotosUseCase by lazy {
-        GetRandomPhotosUseCase(photoRepository)
-    }
-}
-```
-
-**Tại sao là HttpClient?**
+**Why HttpClient?**
 
 1. **Không phụ thuộc Retrofit/OkHttp stack**: Luồng chính chỉ dùng `HttpURLConnection`
 2. **Lightweight**: HttpURLConnection là built-in Android
 3. **Full Control**: Tự quản lý connections, headers, timeouts
 4. **Learning Purpose**: Hiểu rõ HTTP protocol và request/response handling
-5. **Kotlinx Serialization**: Sử dụng `@Serializable` annotation cho response; Gson chỉ phục vụ
-   `JsonBackupManager`
+5. **No external dependencies**: Giảm APK size
 
-**Trade-offs:**
+#### **5.4.6 Error Handling System**
 
-**Lợi ích:**
-
-- Giảm APK size (không cần Retrofit dependencies)
-- Hiểu rõ low-level HTTP
-- Custom error handling dễ dàng
-
-**Bất lợi:**
-
-- Không có built-in features như Retrofit (converters, adapters)
-- Phải tự implement connection pooling nếu cần
-- Ít type-safe hơn Retrofit annotations
-
-#### **5.2.3 Cache Layer**
-
-**JsonBackupManager:**
-Đã phân tích ở phần 2.7.
-
-**PhotoPreloader:**
-
-`app/src/main/java/com/example/myimageloaderproject/modules/home/data/cache/PhotoPreloader.kt`
-
-- Giữ map `preloadedPages` và song song `preloadJobs` để không tải trùng lặp.
-- Gọi `preloadPages(currentPage)` sẽ queue tối đa 3 trang kế tiếp trên `Dispatchers.IO`.
-- `cleanupOldPages()` drop mọi trang `< currentPage - 1` và hủy job tương ứng để hạn chế
-  RAM/network.
+**AppError Types:**
 
 ```kotlin
-fun preloadPages(currentPage: Int) {
-    ((currentPage + 1)..(currentPage + PRELOAD_AHEAD)).forEach { page ->
-        if (page !in preloadedPages && page !in preloadJobs) {
-            preloadJobs[page] = scope.launch(Dispatchers.IO) {
-                runCatching { getRandomPhotosUseCase(perPage, page) }
-                    .onSuccess { preloadedPages[page] = it }
-                    .also { preloadJobs.remove(page) }
-            }
-        }
-    }
-    cleanupOldPages(currentPage)
+sealed class AppError {
+    data class NetworkError(val message: String) : AppError()
+    data class RateLimitError(val retryAfter: Long = 60_000) : AppError()
+    data class ServerError(val code: Int, val message: String) : AppError()
+    data class UnknownError(val message: String) : AppError()
 }
 ```
 
-**Preloading Strategy Highlights**
-
-1. Data-only caching: chỉ lưu `UnsplashPhoto` để `HomeViewModel` render ngay, ảnh thật vẫn do
-   `ImageLoader` xử lý với priority thấp.
-2. `hasPreloadedPage()`/`getPreloadedPage()` giúp `loadMorePhotos()` đọc dữ liệu nóng; nếu miss thì
-   fallback sang API.
-3. `clear()` hủy mọi coroutine khi người dùng refresh hoặc ViewModel bị clear.
-
-### 5.3 Data Layer
-
-#### **5.3.1 Error Handling**
-
-`app/src/main/java/com/example/myimageloaderproject/core/error/ErrorHandler.kt`
-
-- `AppError` gom các tình huống: `NetworkError`, `RateLimitError`, `ServerError`, `UnknownError`.
-- `handleError()` map exception → error UX-friendly, đồng bộ với thông điệp tiếng Việt trong UI.
-- `shouldRetry()` chỉ true cho lỗi mạng, rate-limit và HTTP 503.
-- `getRetryDelay()` trả về hằng số (3s mạng, 5s 503, `retryAfter` cho rate-limit).
+**ErrorMapper:**
 
 ```kotlin
-fun shouldRetry(error: AppError) = when (error) {
-    is AppError.NetworkError,
-    is AppError.RateLimitError -> true
-    is AppError.ServerError -> error.code == 503
-    else -> false
-}
-```
+class ErrorMapper {
+    fun mapError(throwable: Throwable): AppError {
+        return when (throwable) {
+            is UnknownHostException,
+            is SocketTimeoutException -> AppError.NetworkError(
+                "Không thể kết nối đến server. Vui lòng kiểm tra kết nối Internet."
+            )
 
-**Retry Strategy Recap**
+            is IOException -> AppError.NetworkError("Lỗi kết nối mạng. Vui lòng thử lại.")
 
-1. Network errors: auto retry sau 3s nếu thiết bị đã online trở lại (
-   `NetworkMonitor.isNetworkAvailable()` check trước khi gọi lại API).
-2. Rate limit: chờ `retryAfter` (default 60 s) rồi mới trigger `loadPhotos()` lần nữa.
-3. Server 503: retry sau 5 s; các HTTP khác hiển thị snackbar và chờ người dùng tương tác.
-4. Unknown errors: không retry tự động để tránh vòng lặp vô hạn, chỉ hiển thị thông báo.
+            else -> {
+                val message = throwable.message ?: "Đã xảy ra lỗi không xác định"
+                when {
+                    message.contains("403") || message.contains("rate limit", ignoreCase = true) ->
+                        AppError.RateLimitError()
 
-#### **5.3.2 Network Monitoring**
+                    message.contains("500") || message.contains("502") || message.contains("503") ->
+                        AppError.ServerError(500, "Server đang gặp sự cố. Vui lòng thử lại sau.")
 
-`app/src/main/java/com/example/myimageloaderproject/core/network/NetworkMonitor.kt`
-
-- Exposes a cold `Flow<NetworkStatus>` built via `callbackFlow` +
-  `ConnectivityManager.NetworkCallback`.
-- Emits `Available/Losing/Lost/Unavailable` states and deduplicates via `distinctUntilChanged()`.
-- Provides synchronous `isNetworkAvailable()` helper for ViewModel retry checks.
-
-**Collecting Network Status in UI**
-
-```kotlin
-private fun observeNetworkStatus() {
-    lifecycleScope.launch {
-        networkMonitor.networkStatus.collectLatest { status ->
-            when (status) {
-                NetworkStatus.Available -> showOnlineBanner()
-                NetworkStatus.Unavailable,
-                NetworkStatus.Lost -> showOfflineBanner()
-                NetworkStatus.Losing -> showUnstableBanner()
+                    else -> AppError.UnknownError(message)
+                }
             }
         }
     }
 }
 ```
 
-### 5.4 Presentation Layer
+### 5.5 Presentation Layer (MVI Pattern)
 
-#### **5.4.1 HomeViewModel**
+#### **5.5.1 MVI Architecture**
+
+App module áp dụng **MVI (Model-View-Intent)** pattern:
+
+```
+User Action → Intent → ViewModel → State → UI Render
+     ↑                                            ↓
+     └──────────────── User sees result ──────────┘
+```
+
+**Benefits:**
+
+- **Unidirectional data flow**: Dễ debug và trace
+- **Predictable state**: State là single source of truth
+- **Testability**: Dễ test state transitions
+- **Time travel debugging**: Có thể replay states
+
+#### **5.5.2 HomeIntent**
 
 ```kotlin
-sealed class HomeUiState {
-    object InitLoading : HomeUiState()
-    data class InitError(val error: AppError, val isOffline: Boolean, val hasBackupData: Boolean) :
-        HomeUiState()
-    data class Data(
+sealed class HomeIntent {
+    object LoadInitial : HomeIntent()
+    object Refresh : HomeIntent()
+    object LoadMore : HomeIntent()
+    object ClearError : HomeIntent()
+}
+```
+
+**Intent Types:**
+
+- **LoadInitial**: Load trang đầu tiên (from cache or network)
+- **Refresh**: Pull-to-refresh gesture
+- **LoadMore**: Scroll to bottom pagination
+- **ClearError**: User acknowledged error (dismiss snackbar)
+
+#### **5.5.3 HomeUiState**
+
+```kotlin
+sealed interface HomeUiState {
+    object Loading : HomeUiState
+
+    data class Content(
         val photos: List<UnsplashPhoto>,
+        val currentPage: Int = 1,
         val isRefreshing: Boolean = false,
         val isLoadingMore: Boolean = false,
-        val isOffline: Boolean = false,
-        val error: AppError? = null
-    ) : HomeUiState()
-}
+        val isFromCache: Boolean = false,
+        val error: AppError? = null,
+        val networkStatus: NetworkStatus = NetworkStatus.Available
+    ) : HomeUiState
 
-class HomeViewModel(application: Application) : AndroidViewModel(application) {
-    val uiState: StateFlow<HomeUiState>      // backed by MutableStateFlow
-    fun loadPhotos()                         // ưu tiên backup -> network -> preload/save
-    fun refresh()                            // clear preload, fetch trang 1, lưu backup
-    fun loadMorePhotos(showLoading: Boolean) // ưu tiên dữ liệu preloaded, drop overlap
-    fun clearError()                         // reset error trong trạng thái Data
+    data class Error(
+        val error: AppError,
+        val hasBackupData: Boolean = false,
+        val networkStatus: NetworkStatus = NetworkStatus.Available
+    ) : HomeUiState
 }
 ```
 
-Quy trình chính:
+**State Hierarchy:**
 
-- **loadPhotos**: phát hiện backup khả dụng, fallback sang network, lưu `currentPage`, kick-off
-  `PhotoPreloader`, lưu `JsonBackupManager`.
-- **handleLoadError**: ưu tiên trả về dữ liệu backup, bật `isOffline`, lên lịch `scheduleRetry` nếu
-  lỗi cho phép (`NetworkError`, `RateLimit`, `Server 503`).
-- **scheduleRetry**: sử dụng `ErrorHandler.getRetryDelay()` + `NetworkMonitor.isNetworkAvailable()`
-  trước khi gọi lại `loadPhotos()`.
-- **refresh**: dừng preload hiện tại, reset trang về 1, ghi đè backup khi fetch thành công.
-- **loadMorePhotos**: đọc trước từ `PhotoPreloader`, loại bỏ 3 phần tử đầu để tránh trùng trang, nối
-  vào danh sách hiện có, lưu backup mới.
-- **onCleared**: hủy `retryJob`, dọn `PhotoPreloader`.
+- **Loading**: Initial loading state (showing progress)
+- **Content**: Success state with data (can have temporary error)
+- **Error**: Fatal error state (no data to show)
 
-**ViewModel Architecture:**
+**Content State Properties:**
 
-- **StateFlow**: Reactive UI updates
-- **Sealed class UI state**: Type-safe state management
-- **Coroutines**: Async operations
-- **Error handling**: Comprehensive error states
-- **Preloading**: Background data fetch
-- **Backup/restore**: Offline support
+- `photos`: Current photo list
+- `currentPage`: Current pagination page
+- `isRefreshing`: Pull-to-refresh in progress
+- `isLoadingMore`: Pagination loading
+- `isFromCache`: Data loaded from disk cache
+- `error`: Temporary error (snackbar)
+- `networkStatus`: Current network status
 
-#### **5.4.2 HomeActivity**
+#### **5.5.4 HomeViewModel**
 
-Pseudo flow:
+```kotlin
+class HomeViewModel(
+    private val loadInitialPhotosUseCase: LoadInitialPhotosUseCase,
+    private val refreshPhotosUseCase: RefreshPhotosUseCase,
+    private val loadMorePhotosUseCase: LoadMorePhotosUseCase,
+    private val preloadPhotosUseCase: PreloadPhotosUseCase,
+    private val getCachedPhotosUseCase: GetCachedPhotosUseCase,
+    private val connectivityProvider: ConnectivityProvider
+) : ViewModel() {
 
-1. `onCreate` → gọi `enableEdgeToEdge()`, `setContentView`, khởi tạo view references bằng
-   `findViewById`.
-2. Thiết lập `RecyclerView`:
+    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-- `GridLayoutManager(spanCount)`
-- `PhotoAdapter { spanCount }`
-- `itemAnimator = null` để tránh glitch shimmer.
+    private var currentPage = 1
+    private var isLoading = false
+    private var currentNetworkStatus: NetworkStatus = NetworkStatus.Available
 
-3. `addOnScrollListener`:
+    init {
+        observeNetworkStatus()
+    }
 
-- Khi `STATE_SETTLING` → `RequestManager.pauseAll()`
-- Khi `STATE_IDLE` → gom các `ImageView` đang hiển thị và `resumeVisibleOnly(...)`
-- Khi gần cuối danh sách → `viewModel.loadMorePhotos(showLoading = false/true)`
+    fun handleIntent(intent: HomeIntent) {
+        when (intent) {
+            HomeIntent.LoadInitial -> loadInitialPhotos()
+            HomeIntent.Refresh -> refreshPhotos()
+            HomeIntent.LoadMore -> loadMorePhotos()
+            HomeIntent.ClearError -> clearError()
+        }
+    }
 
-4. Pinch-to-zoom bằng `ScaleGestureDetector`: thay đổi `spanCount` (1–3 cột) và cập nhật layout.
-5. `SwipeRefreshLayout` → `viewModel.refresh()`
-6. Nút settings mở `BottomSheetDialog` cho corner radius toggle + chọn số cột.
-7. Quan sát `viewModel.uiState` để hiển thị progress, lỗi, footer loading, snackbar; quan sát
-   `NetworkMonitor` để bật `view_network_status_bar`.
-8. Gắn `FPSOverlay` lên decor view để monitoring hiệu năng.
-9. `dispatchTouchEvent` chặn đa chạm để tránh scroll jitter trong lúc zoom.
+    private fun observeNetworkStatus() {
+        viewModelScope.launch {
+            connectivityProvider.observeNetworkStatus().collect { status ->
+                if (currentNetworkStatus != status) {
+                    currentNetworkStatus = status
+                    updateNetworkStatusInState(status)
+                }
+            }
+        }
+    }
+}
+```
+
+**Key Features:**
+
+- **Single entry point**: `handleIntent()` for all user actions
+- **Network monitoring**: Observe connectivity in ViewModel
+- **State deduplication**: Only emit state when changed
+- **Coroutine management**: ViewModelScope for auto cleanup
+
+**State Transition Examples:**
+
+```
+LoadInitial Intent:
+Loading → Content(photos, isFromCache=true) [if cache hit]
+Loading → Content(photos, isFromCache=false) [if network]
+Loading → Error(error, hasBackupData=true) [if error + cache]
+Loading → Error(error, hasBackupData=false) [if error + no cache]
+
+Refresh Intent:
+Content → Content(isRefreshing=true) → Content(new photos, isRefreshing=false)
+
+LoadMore Intent:
+Content → Content(isLoadingMore=true) → Content(photos + new, isLoadingMore=false)
+```
+
+#### **5.5.5 HomeViewModelFactory**
+
+```kotlin
+class HomeViewModelFactory(
+    private val loadInitialPhotosUseCase: LoadInitialPhotosUseCase,
+    private val refreshPhotosUseCase: RefreshPhotosUseCase,
+    private val loadMorePhotosUseCase: LoadMorePhotosUseCase,
+    private val preloadPhotosUseCase: PreloadPhotosUseCase,
+    private val getCachedPhotosUseCase: GetCachedPhotosUseCase,
+    private val connectivityProvider: ConnectivityProvider
+) : ViewModelProvider.Factory {
+
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return HomeViewModel(
+                loadInitialPhotosUseCase,
+                refreshPhotosUseCase,
+                loadMorePhotosUseCase,
+                preloadPhotosUseCase,
+                getCachedPhotosUseCase,
+                connectivityProvider
+            ) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
+```
+
+#### **5.5.6 HomeActivity Integration**
+
+**Activity Setup:**
+
+```kotlin
+class HomeActivity : AppCompatActivity() {
+
+    private lateinit var viewModel: HomeViewModel
+    private lateinit var adapter: PhotoAdapter
+    private lateinit var gridManager: PhotoGridManager
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // DI setup
+        val appContainer = (application as MyApplication).appContainer
+        val factory = appContainer.homeModule.createHomeViewModelFactory()
+        viewModel = ViewModelProvider(this, factory)[HomeViewModel::class.java]
+
+        // UI setup
+        setupRecyclerView()
+        setupSwipeRefresh()
+        setupObservers()
+
+        // Initial load
+        viewModel.handleIntent(HomeIntent.LoadInitial)
+    }
+
+    private fun setupObservers() {
+        lifecycleScope.launch {
+            viewModel.uiState.collect { state ->
+                when (state) {
+                    is HomeUiState.Loading -> showLoading()
+                    is HomeUiState.Content -> showContent(state)
+                    is HomeUiState.Error -> showError(state)
+                }
+            }
+        }
+    }
+
+    private fun showContent(state: HomeUiState.Content) {
+        adapter.submitList(state.photos)
+        swipeRefresh.isRefreshing = state.isRefreshing
+
+        // Show error snackbar if present
+        state.error?.let { error ->
+            showErrorSnackbar(error)
+            viewModel.handleIntent(HomeIntent.ClearError)
+        }
+
+        // Update network status bar
+        updateNetworkStatusBar(state.networkStatus)
+    }
+}
+```
+
+**Key Integration Points:**
+
+1. **ViewModel Creation**: Sử dụng `HomeViewModelFactory` từ `AppContainer.homeModule`
+2. **Intent Handling**: User actions → `viewModel.handleIntent()`
+3. **State Observation**: Collect `StateFlow` và render UI tương ứng
+4. **Lifecycle Aware**: Sử dụng `lifecycleScope` cho coroutines
+
+**RecyclerView Integration:**
+
+```kotlin
+private fun setupRecyclerView() {
+    adapter = PhotoAdapter { currentSpanCount }
+
+    recyclerView.apply {
+        layoutManager = GridLayoutManager(context, currentSpanCount)
+        adapter = this@HomeActivity.adapter
+        itemAnimator = null // Tránh glitch shimmer
+    }
+
+    // Scroll listener for load more
+    ScrollLoadMoreHandler(recyclerView) {
+        viewModel.handleIntent(HomeIntent.LoadMore)
+    }
+
+    // Request throttling
+    recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+            when (newState) {
+                RecyclerView.SCROLL_STATE_SETTLING -> RequestManager.pauseAll()
+                RecyclerView.SCROLL_STATE_IDLE -> {
+                    val visibleViews = collectVisibleImageViews()
+                    RequestManager.resumeVisibleOnly(visibleViews)
+                }
+            }
+        }
+    })
+}
+```
+
+**Refresh Integration:**
+
+```kotlin
+private fun setupSwipeRefresh() {
+    swipeRefresh.setOnRefreshListener {
+        viewModel.handleIntent(HomeIntent.Refresh)
+    }
+}
+```
 
 **Activity Responsibilities:**
 
-- **UI setup**: Dùng `findViewById` + `GridLayoutManager`, pinch-to-zoom thay đổi `spanCount`
-- **Request throttling**: Phối hợp với `RequestManager.pauseAll()/resumeVisibleOnly()` khi scroll
-  nhanh hoặc idle
-- **Data flow**: Collect `StateFlow` để hiển thị loading, error, footer, snackbar, cached trạng thái
-- **Offline UX**: Quan sát `NetworkMonitor` để hiển thị `view_network_status_bar` và gợi ý refresh
-- **Developer tools**: Bottom sheet settings, logger shortcut, `FPSOverlay` gắn vào root view
+- **ViewModel integration**: Factory creation từ DI container
+- **Intent dispatching**: User actions → Intent → ViewModel
+- **State rendering**: StateFlow collection → UI updates
+- **Image loading optimization**: RequestManager throttling
+- **Network status**: Display connectivity bar
+- **Developer tools**: FPSOverlay, LogViewer access
 
-#### **5.4.3 PhotoAdapter**
+#### **5.5.7 PhotoAdapter**
 
 Pseudo highlights:
 
