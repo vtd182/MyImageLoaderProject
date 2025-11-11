@@ -19,14 +19,14 @@ class PhotoRepositoryImpl(
     override suspend fun loadInitialPhotos(pageSize: Int): Result<List<UnsplashPhoto>, AppError> {
         return try {
             val cachedData = localDataSource.getCachedPhotos()
-            if (cachedData != null && cachedData.photos.isNotEmpty()) {
-                return Result.Success(cachedData.photos)
+            if (cachedData != null && cachedData.pages.isNotEmpty()) {
+                return Result.Success(cachedData.getAllPhotos())
             }
             
             val dtos = remoteDataSource.getPhotos(page = 1, perPage = pageSize)
             val photos = photoMapper.toDomainList(dtos)
             
-            localDataSource.savePhotos(photos, currentPage = 1)
+            localDataSource.savePage(page = 1, photos = photos)
             
             Result.Success(photos)
         } catch (e: Exception) {
@@ -44,6 +44,9 @@ class PhotoRepositoryImpl(
             val dtos = remoteDataSource.getPhotos(page = page, perPage = pageSize)
             val photos = photoMapper.toDomainList(dtos)
             
+            // Save page to disk for offline support
+            localDataSource.savePage(page = page, photos = photos)
+            
             Result.Success(photos)
         } catch (e: Exception) {
             Result.Error(errorMapper.mapError(e))
@@ -53,11 +56,12 @@ class PhotoRepositoryImpl(
     override suspend fun refreshPhotos(pageSize: Int): Result<List<UnsplashPhoto>, AppError> {
         return try {
             localDataSource.clearMemoryCache()
+            localDataSource.clearDiskCache()
             
             val dtos = remoteDataSource.getPhotos(page = 1, perPage = pageSize)
             val photos = photoMapper.toDomainList(dtos)
             
-            localDataSource.savePhotos(photos, currentPage = 1)
+            localDataSource.savePage(page = 1, photos = photos)
             
             Result.Success(photos)
         } catch (e: Exception) {
@@ -68,8 +72,8 @@ class PhotoRepositoryImpl(
     override suspend fun getCachedPhotos(): Result<List<UnsplashPhoto>, AppError> {
         return try {
             val cachedData = localDataSource.getCachedPhotos()
-            if (cachedData != null && cachedData.photos.isNotEmpty()) {
-                Result.Success(cachedData.photos)
+            if (cachedData != null && cachedData.pages.isNotEmpty()) {
+                Result.Success(cachedData.getAllPhotos())
             } else {
                 Result.Error(AppError.UnknownError("No cached data available"))
             }
@@ -89,6 +93,9 @@ class PhotoRepositoryImpl(
             
             localDataSource.savePreloadedPage(page, photos)
             localDataSource.clearOldPreloadedPages(page)
+            
+            // Also save to disk for offline support
+            localDataSource.savePage(page = page, photos = photos)
             
             Result.Success(Unit)
         } catch (e: Exception) {

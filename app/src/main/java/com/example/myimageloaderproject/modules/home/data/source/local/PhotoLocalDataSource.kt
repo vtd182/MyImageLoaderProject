@@ -7,12 +7,19 @@ class PhotoLocalDataSource(
     private val memoryCache: PhotoMemoryCache
 ) {
     
+    /**
+     * Load tất cả cached photos từ disk.
+     * Returns flattened sorted list.
+     */
     suspend fun getCachedPhotos(): CachedPhotoData? {
         return diskCache.loadBackup()
     }
     
-    suspend fun savePhotos(photos: List<UnsplashPhoto>, currentPage: Int) {
-        diskCache.saveBackup(photos, currentPage)
+    /**
+     * Save một page vào disk cache (incremental).
+     */
+    suspend fun savePage(page: Int, photos: List<UnsplashPhoto>) {
+        diskCache.savePage(page, photos)
     }
     
     suspend fun clearDiskCache() {
@@ -40,8 +47,20 @@ class PhotoLocalDataSource(
     }
 }
 
+/**
+ * CachedPhotoData - Structure lưu trữ pages trong disk cache.
+ * 
+ * @param pages Map từ page number -> list photos
+ * @param timestamp Thời điểm cache được tạo (để check expiry)
+ */
 data class CachedPhotoData(
-    val photos: List<UnsplashPhoto>,
-    val currentPage: Int,
+    val pages: Map<Int, List<UnsplashPhoto>>,
     val timestamp: Long
-)
+) {
+    /**
+     * Flatten tất cả pages thành single sorted list.
+     */
+    fun getAllPhotos(): List<UnsplashPhoto> {
+        return pages.toSortedMap().values.flatten()
+    }
+}
