@@ -39,8 +39,10 @@ class HomeViewModel(
     private fun observeNetworkStatus() {
         viewModelScope.launch {
             connectivityProvider.observeNetworkStatus().collect { status ->
-                currentNetworkStatus = status
-                updateNetworkStatusInState(status)
+                if (currentNetworkStatus != status) {
+                    currentNetworkStatus = status
+                    updateNetworkStatusInState(status)
+                }
             }
         }
     }
@@ -48,8 +50,20 @@ class HomeViewModel(
     private fun updateNetworkStatusInState(status: NetworkStatus) {
         val currentState = _uiState.value
         _uiState.value = when (currentState) {
-            is HomeUiState.Content -> currentState.copy(networkStatus = status)
-            is HomeUiState.Error -> currentState.copy(networkStatus = status)
+            is HomeUiState.Content -> {
+                if (currentState.networkStatus != status) {
+                    currentState.copy(networkStatus = status)
+                } else {
+                    currentState
+                }
+            }
+            is HomeUiState.Error -> {
+                if (currentState.networkStatus != status) {
+                    currentState.copy(networkStatus = status)
+                } else {
+                    currentState
+                }
+            }
             is HomeUiState.Loading -> currentState
         }
     }
@@ -126,7 +140,8 @@ class HomeViewModel(
                 is Result.Error -> {
                     _uiState.value = currentState.copy(
                         isRefreshing = false,
-                        error = result.error
+                        error = result.error,
+                        networkStatus = currentNetworkStatus
                     )
                 }
             }
@@ -164,7 +179,8 @@ class HomeViewModel(
                 is Result.Error -> {
                     _uiState.value = currentState.copy(
                         isLoadingMore = false,
-                        error = result.error
+                        error = result.error,
+                        networkStatus = currentNetworkStatus
                     )
                 }
             }

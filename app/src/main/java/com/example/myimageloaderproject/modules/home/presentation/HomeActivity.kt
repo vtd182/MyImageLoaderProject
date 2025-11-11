@@ -46,6 +46,8 @@ class HomeActivity : BaseActivity() {
 
     private var adapterCornerEnabled = false
     private var wasOffline = false
+    private var lastHandledNetworkStatus: NetworkStatus? = null
+    private var lastShownError: AppError? = null
 
     private var tapCount = 0
     private var lastTapTime = 0L
@@ -144,8 +146,15 @@ class HomeActivity : BaseActivity() {
         photoAdapter.submitList(state.photos)
 
         state.error?.let { error ->
-            showErrorSnackbar(error)
-            viewModel.handleIntent(HomeIntent.ClearError)
+            if (lastShownError != error) {
+                lastShownError = error
+                showErrorSnackbar(error)
+                viewModel.handleIntent(HomeIntent.ClearError)
+            }
+        }
+        
+        if (state.error == null && lastShownError != null) {
+            lastShownError = null
         }
     }
 
@@ -155,10 +164,16 @@ class HomeActivity : BaseActivity() {
 
         if (state.hasBackupData) {
             binding.errorLayout.visibility = View.GONE
-            showErrorSnackbar(state.error)
+            if (lastShownError != state.error) {
+                lastShownError = state.error
+                showErrorSnackbar(state.error)
+            }
         } else {
             binding.errorLayout.visibility = View.VISIBLE
-            showErrorMessage(state.error)
+            if (lastShownError != state.error) {
+                lastShownError = state.error
+                showErrorMessage(state.error)
+            }
         }
     }
 
@@ -185,6 +200,11 @@ class HomeActivity : BaseActivity() {
     }
 
     private fun handleNetworkStatus(status: NetworkStatus) {
+        if (lastHandledNetworkStatus == status) {
+            return
+        }
+        lastHandledNetworkStatus = status
+        
         when (status) {
             NetworkStatus.Available -> {
                 networkStatusBarView.setBackgroundColor("#4CAF50".toColorInt())
