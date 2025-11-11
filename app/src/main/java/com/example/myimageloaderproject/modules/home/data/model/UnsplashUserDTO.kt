@@ -1,6 +1,8 @@
 package com.example.myimageloaderproject.modules.home.data.model
 
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class UnsplashUserDTO(
     val id: String,
     val username: String,
@@ -10,7 +12,7 @@ data class UnsplashUserDTO(
     val location: String?,
     val total_likes: Int,
     val total_photos: Int,
-    val total_collection: Int,
+    val total_collection: Int = 0,
     val profile_image: UnsplashUrlsDTO,
     val links: UnsplashLinksDTO
 )

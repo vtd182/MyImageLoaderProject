@@ -1,5 +1,8 @@
 package com.example.myimageloaderproject.modules.home.data.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class UnsplashLinksDTO(
     val self: String,
     val html: String,
