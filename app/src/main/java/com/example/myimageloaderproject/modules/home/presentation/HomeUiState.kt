@@ -3,8 +3,8 @@ package com.example.myimageloaderproject.modules.home.presentation
 import com.example.myimageloaderproject.core.error.AppError
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 
-sealed interface HomeUiStateV2 {
-    object Loading : HomeUiStateV2
+sealed interface HomeUiState {
+    object Loading : HomeUiState
     
     data class Content(
         val photos: List<UnsplashPhoto>,
@@ -13,10 +13,10 @@ sealed interface HomeUiStateV2 {
         val isLoadingMore: Boolean = false,
         val isFromCache: Boolean = false,
         val error: AppError? = null
-    ) : HomeUiStateV2
+    ) : HomeUiState
     
     data class Error(
         val error: AppError,
         val hasBackupData: Boolean = false
-    ) : HomeUiStateV2
+    ) : HomeUiState
 }

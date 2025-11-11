@@ -8,7 +8,7 @@ import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.myimageloaderproject.R
-import com.example.myimageloaderproject.modules.home.presentation.HomeActivityV2
+import com.example.myimageloaderproject.modules.home.presentation.HomeActivity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -25,7 +25,7 @@ class SplashActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             delay(1500)
-            startActivity(Intent(this@SplashActivity, HomeActivityV2::class.java))
+            startActivity(Intent(this@SplashActivity, HomeActivity::class.java))
             finish()
             applyTransition()
         }

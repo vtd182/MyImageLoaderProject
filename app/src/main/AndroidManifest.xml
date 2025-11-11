@@ -34,11 +34,6 @@
             android:name=".modules.home.presentation.HomeActivity"
             android:exported="false"
             android:theme="@style/Theme.MyImageLoaderProject" />
-
-        <activity
-            android:name=".modules.home.presentation.HomeActivityV2"
-            android:exported="false"
-            android:theme="@style/Theme.MyImageLoaderProject" />
     </application>
 
 </manifest>

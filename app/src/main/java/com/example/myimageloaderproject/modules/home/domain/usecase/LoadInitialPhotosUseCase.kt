@@ -3,11 +3,11 @@ package com.example.myimageloaderproject.modules.home.domain.usecase
 import com.example.myimageloaderproject.core.config.AppConfig
 import com.example.myimageloaderproject.core.error.AppError
 import com.example.myimageloaderproject.modules.home.domain.model.LoadPhotoResult
-import com.example.myimageloaderproject.modules.home.domain.repository.PhotoRepositoryV2
+import com.example.myimageloaderproject.modules.home.domain.repository.PhotoRepository
 import com.example.myimageloaderproject.shared.result.Result
 
 class LoadInitialPhotosUseCase(
-    private val repository: PhotoRepositoryV2
+    private val repository: PhotoRepository
 ) {
     suspend operator fun invoke(): Result<LoadPhotoResult, AppError> {
         val cachedResult = repository.getCachedPhotos()

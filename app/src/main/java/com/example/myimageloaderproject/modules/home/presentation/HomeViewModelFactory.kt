@@ -18,8 +18,8 @@ class HomeViewModelFactory(
     
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(HomeViewModelV2::class.java)) {
-            return HomeViewModelV2(
+        if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
+            return HomeViewModel(
                 loadInitialPhotosUseCase = loadInitialPhotosUseCase,
                 refreshPhotosUseCase = refreshPhotosUseCase,
                 loadMorePhotosUseCase = loadMorePhotosUseCase,
