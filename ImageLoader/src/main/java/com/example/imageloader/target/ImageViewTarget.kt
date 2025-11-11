@@ -103,6 +103,7 @@ class ImageViewTarget(
      * - Hiển thị shimmer nếu bật.
      */
     override fun onLoadStarted() {
+        imageView.background = null
         loadingRunnable?.let { loadingHandler.removeCallbacks(it) }
 
         if (enableShimmer) {
@@ -123,6 +124,8 @@ class ImageViewTarget(
      * 5. ĐĂNG KÝ CLEANUP THEO LIFECYCLE (doOnAttach → doOnDetach).
      */
     override fun onResourceReady(engineResource: EngineResource) {
+        imageView.background = null
+
         hideShimmer()
 
         // Xoá drawable cũ
@@ -149,7 +152,7 @@ class ImageViewTarget(
         }
 
         /**
-         * ✅ QUẢN LÝ VÒNG ĐỜI RESOURCE
+         * QUẢN LÝ VÒNG ĐỜI RESOURCE
          *
          * Đây là phần quan trọng nhất:
          * - Không được gọi doOnDetach trực tiếp.
@@ -174,13 +177,13 @@ class ImageViewTarget(
         retryCallback = onRetry
         imageView.setImageDrawable(errorDrawable)
 
-        // Màu vàng → debug error dễ thấy
-        imageView.setBackgroundColor(0xFFFFEB3B.toInt())
+        // debug error dễ thấy
+        imageView.setBackgroundColor(0xFFE0E0E0.toInt())
 
         if (onRetry != null && errorDrawable != null) {
             imageView.setOnClickListener {
-                imageView.setImageDrawable(null)
-                imageView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+//                imageView.setImageDrawable(null)
+//                imageView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 onRetry.invoke()
             }
         } else {
