@@ -3,6 +3,8 @@ package com.example.myimageloaderproject.modules.home.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myimageloaderproject.core.config.AppConfig
+import com.example.myimageloaderproject.core.platform.ConnectivityProvider
+import com.example.myimageloaderproject.core.platform.NetworkStatus
 import com.example.myimageloaderproject.modules.home.domain.usecase.GetCachedPhotosUseCase
 import com.example.myimageloaderproject.modules.home.domain.usecase.LoadInitialPhotosUseCase
 import com.example.myimageloaderproject.modules.home.domain.usecase.LoadMorePhotosUseCase
@@ -19,7 +21,8 @@ class HomeViewModel(
     private val refreshPhotosUseCase: RefreshPhotosUseCase,
     private val loadMorePhotosUseCase: LoadMorePhotosUseCase,
     private val preloadPhotosUseCase: PreloadPhotosUseCase,
-    private val getCachedPhotosUseCase: GetCachedPhotosUseCase
+    private val getCachedPhotosUseCase: GetCachedPhotosUseCase,
+    private val connectivityProvider: ConnectivityProvider
 ) : ViewModel() {
     
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
@@ -27,6 +30,29 @@ class HomeViewModel(
     
     private var currentPage = 1
     private var isLoading = false
+    private var currentNetworkStatus: NetworkStatus = NetworkStatus.Available
+    
+    init {
+        observeNetworkStatus()
+    }
+    
+    private fun observeNetworkStatus() {
+        viewModelScope.launch {
+            connectivityProvider.observeNetworkStatus().collect { status ->
+                currentNetworkStatus = status
+                updateNetworkStatusInState(status)
+            }
+        }
+    }
+    
+    private fun updateNetworkStatusInState(status: NetworkStatus) {
+        val currentState = _uiState.value
+        _uiState.value = when (currentState) {
+            is HomeUiState.Content -> currentState.copy(networkStatus = status)
+            is HomeUiState.Error -> currentState.copy(networkStatus = status)
+            is HomeUiState.Loading -> currentState
+        }
+    }
     
     fun handleIntent(intent: HomeIntent) {
         when (intent) {
@@ -49,7 +75,8 @@ class HomeViewModel(
                     _uiState.value = HomeUiState.Content(
                         photos = result.data.photos,
                         currentPage = currentPage,
-                        isFromCache = result.data.isFromCache
+                        isFromCache = result.data.isFromCache,
+                        networkStatus = currentNetworkStatus
                     )
                     
                     launch { preloadPhotosUseCase(currentPage) }
@@ -61,12 +88,14 @@ class HomeViewModel(
                             photos = cachedResult.data,
                             currentPage = 1,
                             isFromCache = true,
-                            error = result.error
+                            error = result.error,
+                            networkStatus = currentNetworkStatus
                         )
                     } else {
                         _uiState.value = HomeUiState.Error(
                             error = result.error,
-                            hasBackupData = false
+                            hasBackupData = false,
+                            networkStatus = currentNetworkStatus
                         )
                     }
                 }
@@ -88,7 +117,8 @@ class HomeViewModel(
                     _uiState.value = HomeUiState.Content(
                         photos = result.data,
                         currentPage = currentPage,
-                        isRefreshing = false
+                        isRefreshing = false,
+                        networkStatus = currentNetworkStatus
                     )
                     
                     launch { preloadPhotosUseCase(currentPage) }
@@ -125,7 +155,8 @@ class HomeViewModel(
                     _uiState.value = HomeUiState.Content(
                         photos = updatedPhotos,
                         currentPage = currentPage,
-                        isLoadingMore = false
+                        isLoadingMore = false,
+                        networkStatus = currentNetworkStatus
                     )
                     
                     launch { preloadPhotosUseCase(currentPage) }

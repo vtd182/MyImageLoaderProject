@@ -116,18 +116,16 @@ class HomeActivity : BaseActivity() {
             viewModel.uiState.collectLatest { state ->
                 when (state) {
                     is HomeUiState.Loading -> showLoading()
-                    is HomeUiState.Content -> showContent(state)
-                    is HomeUiState.Error -> showError(state)
+                    is HomeUiState.Content -> {
+                        showContent(state)
+                        handleNetworkStatus(state.networkStatus)
+                    }
+                    is HomeUiState.Error -> {
+                        showError(state)
+                        handleNetworkStatus(state.networkStatus)
+                    }
                 }
             }
-        }
-
-        lifecycleScope.launch {
-            (application as MyApplication).appContainer.connectivityProvider
-                .observeNetworkStatus()
-                .collectLatest { status ->
-                    handleNetworkStatus(status)
-                }
         }
     }
 

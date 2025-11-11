@@ -20,7 +20,7 @@ import com.example.myimageloaderproject.shared.error.ErrorMapper
 class HomeModule(
     httpClient: HttpClient,
     fileStorageProvider: FileStorageProvider,
-    connectivityProvider: ConnectivityProvider
+    private val connectivityProvider: ConnectivityProvider
 ) {
     private val photoMapper by lazy { PhotoMapper() }
 
@@ -80,7 +80,8 @@ class HomeModule(
             refreshPhotosUseCase = refreshPhotosUseCase,
             loadMorePhotosUseCase = loadMorePhotosUseCase,
             preloadPhotosUseCase = preloadPhotosUseCase,
-            getCachedPhotosUseCase = getCachedPhotosUseCase
+            getCachedPhotosUseCase = getCachedPhotosUseCase,
+            connectivityProvider = connectivityProvider
         )
     }
 }
