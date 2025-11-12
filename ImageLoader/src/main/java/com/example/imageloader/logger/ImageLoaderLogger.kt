@@ -91,6 +91,9 @@ object ImageLoaderLogger {
     var saveToActivity = true
     var jsonPhotoCount = 0
     var jsonCurrentPage = 0
+    
+    private var bitmapPoolHits = 0
+    private var bitmapPoolMisses = 0
 
     /**
      * Log một ImageLoadLog entry.
@@ -202,6 +205,62 @@ object ImageLoaderLogger {
     }
 
     /**
+     * Log bitmap pool hit.
+     */
+    @Synchronized
+    fun logBitmapPoolHit() {
+        bitmapPoolHits++
+    }
+    
+    /**
+     * Log bitmap pool miss.
+     */
+    @Synchronized
+    fun logBitmapPoolMiss() {
+        bitmapPoolMisses++
+    }
+    
+    /**
+     * Get bitmap pool hit rate.
+     *
+     * @return Hit rate (0.0 to 1.0)
+     */
+    @Synchronized
+    fun getBitmapPoolHitRate(): Double {
+        val total = bitmapPoolHits + bitmapPoolMisses
+        return if (total > 0) bitmapPoolHits / total.toDouble() else 0.0
+    }
+    
+    /**
+     * Reset bitmap pool statistics.
+     */
+    @Synchronized
+    fun resetBitmapPoolStats() {
+        bitmapPoolHits = 0
+        bitmapPoolMisses = 0
+    }
+    
+    /**
+     * Get current memory snapshot.
+     *
+     * @return MemorySnapshot with current memory usage
+     */
+    fun getMemorySnapshot(): MemorySnapshot {
+        val runtime = Runtime.getRuntime()
+        val maxMemory = runtime.maxMemory()
+        val totalMemory = runtime.totalMemory()
+        val freeMemory = runtime.freeMemory()
+        val usedMemory = totalMemory - freeMemory
+        
+        return MemorySnapshot(
+            usedMemoryMB = usedMemory / 1024.0 / 1024.0,
+            totalMemoryMB = totalMemory / 1024.0 / 1024.0,
+            maxMemoryMB = maxMemory / 1024.0 / 1024.0,
+            freeMemoryMB = freeMemory / 1024.0 / 1024.0
+        )
+    }
+
+    /**
      * Calculate statistics từ logs hiện tại.
      *
      * ## Metrics:
@@ -209,6 +268,7 @@ object ImageLoaderLogger {
      * - Average load times per source
      * - Average fetch/decode/transform times
      * - Error counts
+     * - Bitmap pool statistics
      *
      * @return LogStats chứa metrics
      */
@@ -244,7 +304,11 @@ object ImageLoaderLogger {
             networkAvgTime = network.map { it.totalTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
             networkAvgFetch = network.mapNotNull { it.fetchTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
             networkAvgDecode = network.mapNotNull { it.decodeTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
-            networkAvgTransform = network.mapNotNull { it.transformTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0
+            networkAvgTransform = network.mapNotNull { it.transformTimeMs }.average().takeIf { !it.isNaN() } ?: 0.0,
+            
+            bitmapPoolHits = bitmapPoolHits,
+            bitmapPoolMisses = bitmapPoolMisses,
+            bitmapPoolHitRate = getBitmapPoolHitRate()
         )
     }
 }
@@ -277,5 +341,17 @@ data class LogStats(
     val networkAvgTime: Double,
     val networkAvgFetch: Double,
     val networkAvgDecode: Double,
-    val networkAvgTransform: Double
+    val networkAvgTransform: Double,
+    
+    val bitmapPoolHits: Int = 0,
+    val bitmapPoolMisses: Int = 0,
+    val bitmapPoolHitRate: Double = 0.0
+)
+
+data class MemorySnapshot(
+    val usedMemoryMB: Double,
+    val totalMemoryMB: Double,
+    val maxMemoryMB: Double,
+    val freeMemoryMB: Double,
+    val timestamp: Long = System.currentTimeMillis()
 )
