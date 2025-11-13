@@ -81,12 +81,6 @@ class MemoryCache(
             newValue: Bitmap?
         ) {
             if (evicted) {
-                val keyStr = key?.take(20) ?: "null"
-                val sizeKB = oldValue?.byteCount?.div(1024) ?: 0
-                android.util.Log.w(
-                    "MemoryCache",
-                    "🗑️ EVICTION! key=$keyStr... size=${sizeKB}KB, items before: ${itemCount + 1}"
-                )
                 ImageLoaderLogger.d(
                     "MemoryCache",
                     "Evicting image, items in cache before evict: ${itemCount + 1}"
@@ -94,7 +88,6 @@ class MemoryCache(
                 itemCount--
             }
             if (evicted && oldValue != null && oldValue.isMutable && !oldValue.isRecycled) {
-                android.util.Log.d("MemoryCache", "♻️ Moving evicted bitmap to BitmapPool")
                 bitmapPool?.put(oldValue)
             }
         }
@@ -106,15 +99,7 @@ class MemoryCache(
      * @param key Cache key
      * @return Bitmap nếu tìm thấy, null nếu cache miss
      */
-    fun get(key: String): Bitmap? {
-        val bitmap = cache.get(key)
-        if (bitmap != null) {
-            android.util.Log.d("MemoryCache", "✅ GET HIT: key=${key.take(20)}... size=${bitmap.byteCount/1024}KB")
-        } else {
-            android.util.Log.d("MemoryCache", "❌ GET MISS: key=${key.take(20)}...")
-        }
-        return bitmap
-    }
+    fun get(key: String): Bitmap? = cache.get(key)
 
     /**
      * Put bitmap vào cache.
@@ -132,12 +117,10 @@ class MemoryCache(
         if (bitmap.isRecycled) {
             return null
         }
-        android.util.Log.d("MemoryCache", "📥 PUT: key=${key.take(20)}... size=${bitmap.byteCount/1024}KB, current: $itemCount items, cache size: ${cache.size()/1024}KB / ${cache.maxSize()/1024}KB")
         val oldBitmap = cache.put(key, bitmap)
         if (oldBitmap == null) {
             itemCount++
         }
-        android.util.Log.d("MemoryCache", "✅ PUT complete: now $itemCount items in cache")
         return oldBitmap
     }
 

@@ -35,10 +35,10 @@ class PhotoAdapter(
     }
 
     override fun onBindViewHolder(holder: PhotoViewHolder, position: Int) {
-        val spec = items[position]
-        
-        // Clear previous request (critical for RecyclerView reuse)
+        // CRITICAL: Clear previous request BEFORE binding (like production app)
         RequestManager.clear(holder.imageView)
+        
+        val spec = items[position]
         
         // Generate placeholder color from position (deterministic)
         val colorInt = android.graphics.Color.rgb(
@@ -62,11 +62,10 @@ class PhotoAdapter(
 
     override fun getItemCount(): Int = items.size
 
-    /**
-     * Clear all pending requests when activity is destroyed.
-     */
-    fun clearAll() {
-        // No-op: RequestManager automatically clears on view detach
+    override fun onViewRecycled(holder: PhotoViewHolder) {
+        // Clear when view is recycled (like production app)
+        RequestManager.clear(holder.imageView)
+        super.onViewRecycled(holder)
     }
 
     class PhotoViewHolder(val imageView: ImageView) : RecyclerView.ViewHolder(imageView)

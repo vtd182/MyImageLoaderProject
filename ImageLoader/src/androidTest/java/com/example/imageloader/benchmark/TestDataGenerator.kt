@@ -94,27 +94,29 @@ object TestDataGenerator {
     /**
      * Generate mixed dataset mimicking real-world usage.
      *
-     * Distribution:
-     * - 60% small (typical list items)
-     * - 20% medium (full screen)
-     * - 15% tiny (thumbnails)
-     * - 5% large (high-res)
+     * NEW Distribution (includes all sizes):
+     * - 10% tiny (thumbnails)
+     * - 50% small (typical list items)
+     * - 25% medium (full screen)
+     * - 10% large (high-res)
+     * - 5% huge (ultra high-res, stress test)
      *
      * @param totalCount Total number of images
      * @return Realistic mix of image specs
      */
     fun generateMixedDataset(totalCount: Int): List<ImageSpec> {
         val distribution = mapOf(
-            SizeCategory.TINY to 0.15,
-            SizeCategory.SMALL to 0.60,
-            SizeCategory.MEDIUM to 0.20,
-            SizeCategory.LARGE to 0.05
+            SizeCategory.TINY to 0.10,
+            SizeCategory.SMALL to 0.50,
+            SizeCategory.MEDIUM to 0.25,
+            SizeCategory.LARGE to 0.10,
+            SizeCategory.HUGE to 0.05
         )
         
         return distribution.flatMap { (category, ratio) ->
             val count = (totalCount * ratio).toInt()
             generatePicsumUrls(count, category)
-        }
+        }.shuffled() // Shuffle để mix sizes trong list
     }
     
     /**
