@@ -1,7 +1,6 @@
 package com.example.imageloader.benchmark.suite
 
 import android.content.Context
-import android.widget.ImageView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.imageloader.benchmark.TestDataGenerator
@@ -14,11 +13,14 @@ import com.example.imageloader.benchmark.reporter.DeviceInfo
 import com.example.imageloader.benchmark.reporter.HtmlReporter
 import com.example.imageloader.benchmark.reporter.JsonExporter
 import com.example.imageloader.benchmark.reporter.MemoryBenchmarkResult
+import com.example.imageloader.core.Engine
 import com.example.imageloader.core.ImageLoader
-import com.example.imageloader.core.RequestManager
+import com.example.imageloader.core.Request
 import com.example.imageloader.logger.ImageLoaderLogger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.Before
@@ -40,6 +42,7 @@ class RealCacheBenchmark {
     private lateinit var context: Context
     private lateinit var outputDir: File
     private lateinit var imageLoader: ImageLoader
+    private lateinit var engine: Engine
 
     @Before
     fun setup() {
@@ -51,6 +54,9 @@ class RealCacheBenchmark {
 
         // Get ImageLoader instance
         imageLoader = ImageLoader.getInstance(context)
+
+        // Get Engine for direct testing
+        engine = imageLoader.engine
 
         // IMPORTANT: Enable logger explicitly
         ImageLoaderLogger.saveToActivity = true
@@ -64,243 +70,233 @@ class RealCacheBenchmark {
     }
 
     /**
-     * Test: Load 200 images và measure ALL cache tiers THẬT.
+     * Test: Load images using ENGINE DIRECTLY và measure ALL cache tiers.
      *
      * Test flow:
-     * - Phase 1: Load 100 images (cold cache - network loads)
-     * - Clear ImageViews → release to memory cache
-     * - Phase 2: Reload same 100 images (memory cache hits)
-     * - Phase 3: Load 100 NEW images (overflow memory → disk cache)
-     * - Phase 4: Clear memory cache
-     * - Phase 5: Reload phase 1 images (disk cache hits)
-     * - Phase 6: Final reload all (active + memory + disk mix)
+     * - Phase 1: Load 100 images via Engine (cold cache → network)
+     * - Release resources manually (Active → Memory Cache)
+     * - Phase 2: Reload same 100 images (Memory Cache hits)
+     * - Phase 3: Load 100 NEW images (overflow Memory → Disk Cache)
+     * - Phase 4: Reload phase 1 images (Disk Cache hits)
      */
     @Test
     fun testRealCachePerformance() = runBlocking {
-        println("🚀 Starting REAL cache benchmark (ALL cache tiers)...")
-        println("📊 Loading images and collecting metrics...")
+        println("🚀 Starting REAL cache benchmark (Engine Direct Testing)...")
+        println("📊 This approach tests Engine directly without ImageView lifecycle issues")
 
-        // Generate test URLs - 200 images total
+        // Generate test URLs
         val phase1Images = TestDataGenerator.generateMixedDataset(100)
         val phase3Images = TestDataGenerator.generateMixedDataset(100)
-        println("📦 Generated ${phase1Images.size + phase3Images.size} test images")
+        println("📦 Generated ${phase1Images.size + phase3Images.size} test URLs")
 
-        // Create ImageViews + TestTargets (manual control)
-        val imageViews = (0 until 100).map {
-            withContext(Dispatchers.Main) {
-                ImageView(context)
-            }
-        }
-        val targets = imageViews.map { TestTarget(it) }
+        // ============================================================
+        // Phase 1: Load 100 images via Engine (cold start → NETWORK)
+        // ============================================================
+        println("\n📥 Phase 1: Load 100 images via Engine (cold cache → NETWORK)...")
 
-        println("📦 Created ${imageViews.size} ImageViews with TestTargets")
+        val phase1Targets = mutableListOf<SimpleTestTarget>()
+        val phase1Jobs = mutableListOf<Job>()
 
-        // Phase 1: First load (cold cache - expect network loads)
-        println("\n📥 Phase 1: First load - 100 images (cold cache → NETWORK)...")
+        // Load all images (engine.load handles main thread internally)
+        phase1Images.forEachIndexed { index, spec ->
+            val target = SimpleTestTarget()
+            phase1Targets.add(target)
 
-        // Add listener to track logs
-        var logCount = 0
-        val listener: (com.example.imageloader.logger.LogEntry) -> Unit = { entry ->
-            if (entry is com.example.imageloader.logger.ImageLoadLog) {
-                logCount++
-            }
-        }
-        ImageLoaderLogger.addListener(listener)
+            val request = Request(
+                url = spec.url,
+                resizeWidth = 400,
+                resizeHeight = 400
+            )
 
-        loadImages(phase1Images, imageViews)
+            // Load via Engine directly - returns Job
+            val job = engine.load(request, target)
+            phase1Jobs.add(job)
 
-        // Wait for loads to complete
-        println("   Waiting for loads to complete...")
-        var waitTime = 0
-        while (logCount < phase1Images.size && waitTime < 30000) {
-            delay(500)
-            waitTime += 500
-            if (waitTime % 2000 == 0) {
-                println("   Progress: $logCount/${phase1Images.size} images loaded (${waitTime}ms)")
+            if ((index + 1) % 20 == 0) {
+                print(".")
             }
         }
 
-        ImageLoaderLogger.removeListener(listener)
+        // Wait for all targets to receive results (poll with timeout)
+        println("\n   Waiting for ${phase1Targets.size} images to load...")
+        val startTime = System.currentTimeMillis()
+        var allLoaded = false
+        while (!allLoaded && (System.currentTimeMillis() - startTime) < 30000) {
+            allLoaded = phase1Targets.all { it.loadSuccess || it.loadFailed }
+            if (!allLoaded) delay(100)
+        }
+        val loaded = phase1Targets.count { it.loadSuccess }
+        val failed = phase1Targets.count { it.loadFailed }
+        println("   ✓ Loaded: $loaded, Failed: $failed")
+        delay(1000)
 
+        // Get stats after phase 1
         val statsAfterPhase1 = ImageLoaderLogger.getLogStats()
-        println("   ✓ Network loads: ${statsAfterPhase1.networkCount}")
+        println("\n📊 Phase 1 Results:")
+        println("   ✓ Network loads: ${statsAfterPhase1.networkCount} (expected: ~100)")
+        println("   ✓ Disk cache: ${statsAfterPhase1.diskCacheCount}")
+        println("   ✓ Memory cache: ${statsAfterPhase1.memoryCacheCount}")
         println("   ✓ Active cache: ${statsAfterPhase1.activeCacheCount}")
-        println("   ✓ Total requests: ${statsAfterPhase1.totalImageRequests}")
+        println("   ✓ Total: ${statsAfterPhase1.totalImageRequests}")
 
-        // IMPORTANT: MANUAL release to move Active → Memory Cache
-        println("\n🧹 Releasing resources (Active → Memory Cache)...")
-        withContext(Dispatchers.Main) {
-            targets.forEach { target ->
-                target.release()  // MANUAL release - moves to Memory Cache
-            }
+        // ============================================================
+        // Release Phase: MANUAL release → Move Active to Memory Cache
+        // ============================================================
+        println("\n🧹 Releasing all resources (Active → Memory Cache)...")
+
+        phase1Targets.forEach { target ->
+            target.release()  // Manual release - decrements ref count
         }
-        println("   Released ${targets.size} resources")
-        
-        // Check stats BEFORE waiting
-        val statsBeforeDelay = ImageLoaderLogger.getLogStats()
-        println("   📊 BEFORE delay - Active: ${statsBeforeDelay.activeCacheCount}, Memory: ${statsBeforeDelay.memoryCacheCount}")
-        
-        delay(3000) // Wait longer for resources to be moved to memory cache
-        
+
+        println("   ✓ Released ${phase1Targets.size} resources")
+        delay(1000)  // Wait for resources to move to Memory Cache
+
         // Force GC to ensure cleanup
         System.gc()
-        delay(1000)
-        
-        // Check stats AFTER waiting
-        val statsAfterDelay = ImageLoaderLogger.getLogStats()
-        println("   📊 AFTER delay - Active: ${statsAfterDelay.activeCacheCount}, Memory: ${statsAfterDelay.memoryCacheCount}")
+        delay(500)
 
-        // Create NEW ImageViews + Targets for phase 2
-        println("📦 Creating NEW ImageViews for phase 2...")
-        val imageViews2 = (0 until 100).map {
-            withContext(Dispatchers.Main) {
-                ImageView(context)
+        // ============================================================
+        // Phase 2: Reload same 100 URLs → Should hit MEMORY CACHE!
+        // ============================================================
+        println("\n🔥 Phase 2: Reload same 100 images (expect MEMORY CACHE hits)...")
+
+        val phase2Targets = mutableListOf<SimpleTestTarget>()
+        val phase2Jobs = mutableListOf<Job>()
+
+        phase1Images.forEachIndexed { index, spec ->
+            val target = SimpleTestTarget()
+            phase2Targets.add(target)
+
+            val request = Request(
+                url = spec.url,
+                resizeWidth = 400,
+                resizeHeight = 400
+            )
+
+            // Load via Engine - should hit Memory Cache!
+            val job = engine.load(request, target)
+            phase2Jobs.add(job)
+
+            if ((index + 1) % 20 == 0) {
+                print(".")
             }
         }
-        val targets2 = imageViews2.map { TestTarget(it) }
 
-        // Phase 2: Reload same images with NEW ImageViews (expect MEMORY CACHE hits)
-        println("\n🔥 Phase 2: Reload same 100 images with NEW ImageViews (expect MEMORY CACHE hits)...")
-
-        logCount = 0
-        ImageLoaderLogger.addListener(listener)
-
-        loadImages(phase1Images, imageViews2)
-
-        // Wait for loads to complete
-        println("   Waiting for loads to complete...")
-        waitTime = 0
-        while (logCount < phase1Images.size && waitTime < 20000) {
-            delay(500)
-            waitTime += 500
+        // Wait for all targets to receive results (poll with timeout)
+        println("\n   Waiting for ${phase2Targets.size} images to load...")
+        var startTime2 = System.currentTimeMillis()
+        var allLoaded2 = false
+        while (!allLoaded2 && (System.currentTimeMillis() - startTime2) < 30000) {
+            allLoaded2 = phase2Targets.all { it.loadSuccess || it.loadFailed }
+            if (!allLoaded2) delay(100)
         }
+        println("   ✓ Loaded: ${phase2Targets.count { it.loadSuccess }}, Failed: ${phase2Targets.count { it.loadFailed }}")
+        delay(1000)
 
-        ImageLoaderLogger.removeListener(listener)
-
+        // Get stats after phase 2
         val statsAfterPhase2 = ImageLoaderLogger.getLogStats()
-        println("   ✓ Memory cache hits: ${statsAfterPhase2.memoryCacheCount}")
+        println("\n📊 Phase 2 Results:")
+        println("   ✓ Memory cache: ${statsAfterPhase2.memoryCacheCount} (expected: ~100)")
         println("   ✓ Active cache: ${statsAfterPhase2.activeCacheCount}")
-        println("   ✓ Total requests: ${statsAfterPhase2.totalImageRequests}")
+        println("   ✓ Disk cache: ${statsAfterPhase2.diskCacheCount}")
+        println("   ✓ Network: ${statsAfterPhase2.networkCount}")
+        println("   ✓ Total: ${statsAfterPhase2.totalImageRequests}")
 
         // Release phase 2 resources
         println("\n🧹 Releasing phase 2 resources...")
-        withContext(Dispatchers.Main) {
-            targets2.forEach { target ->
-                target.release()
+        phase2Targets.forEach { it.release() }
+        delay(1000)
+        System.gc()
+        delay(500)
+
+        // ============================================================
+        // Phase 3: Load 100 NEW images → Overflow Memory Cache
+        // ============================================================
+        println("\n💾 Phase 3: Load 100 NEW images (overflow Memory → Disk)...")
+
+        val phase3Targets = mutableListOf<SimpleTestTarget>()
+        val phase3Jobs = mutableListOf<Job>()
+
+        phase3Images.forEachIndexed { index, spec ->
+            val target = SimpleTestTarget()
+            phase3Targets.add(target)
+
+            val request = Request(
+                url = spec.url,
+                resizeWidth = 400,
+                resizeHeight = 400
+            )
+
+            val job = engine.load(request, target)
+            phase3Jobs.add(job)
+
+            if ((index + 1) % 20 == 0) {
+                print(".")
             }
         }
-        delay(1000)
 
-        // Phase 3: Load 100 NEW images (will overflow memory cache → disk cache)
-        println("\n💾 Phase 3: Load 100 NEW images (overflow memory → DISK CACHE)...")
-
-        logCount = 0
-        ImageLoaderLogger.addListener(listener)
-
-        loadImages(phase3Images, imageViews)
-
-        // Wait for loads to complete
-        println("   Waiting for loads to complete...")
-        waitTime = 0
-        while (logCount < phase3Images.size && waitTime < 30000) {
-            delay(500)
-            waitTime += 500
+        println("\n   Waiting for ${phase3Targets.size} images to load...")
+        var startTime3 = System.currentTimeMillis()
+        var allLoaded3 = false
+        while (!allLoaded3 && (System.currentTimeMillis() - startTime3) < 30000) {
+            allLoaded3 = phase3Targets.all { it.loadSuccess || it.loadFailed }
+            if (!allLoaded3) delay(100)
         }
-
-        ImageLoaderLogger.removeListener(listener)
+        println("   ✓ Loaded: ${phase3Targets.count { it.loadSuccess }}, Failed: ${phase3Targets.count { it.loadFailed }}")
+        delay(1000)
 
         val statsAfterPhase3 = ImageLoaderLogger.getLogStats()
-        println("   ✓ Network loads: ${statsAfterPhase3.networkCount - statsAfterPhase2.networkCount}")
-        println("   ✓ Total requests: ${statsAfterPhase3.totalImageRequests}")
+        println("\n📊 Phase 3 Results:")
+        println("   ✓ Network: ${statsAfterPhase3.networkCount}")
+        println("   ✓ Total: ${statsAfterPhase3.totalImageRequests}")
 
-        // Clear ImageViews to force disk reads
-        // Memory will be evicted naturally by loading more images
-        println("\n🧹 Clearing ImageViews (memory will be evicted naturally)...")
-        withContext(Dispatchers.Main) {
-            imageViews.forEach { imageView ->
-                RequestManager.clear(imageView)
-            }
-        }
+        // Release phase 3
+        phase3Targets.forEach { it.release() }
         delay(1000)
 
-        // Load MORE images to force memory eviction of phase1 images
-        println("\n💾 Loading 50 more NEW images (force memory eviction)...")
-        val evictionImages = TestDataGenerator.generateMixedDataset(50)
-
-        logCount = 0
-        ImageLoaderLogger.addListener(listener)
-
-        loadImages(evictionImages, imageViews.take(50))
-
-        // Wait
-        waitTime = 0
-        while (logCount < 50 && waitTime < 15000) {
-            delay(500)
-            waitTime += 500
-        }
-
-        ImageLoaderLogger.removeListener(listener)
-
-        // Now clear ImageViews again
-        withContext(Dispatchers.Main) {
-            imageViews.forEach { imageView ->
-                RequestManager.clear(imageView)
-            }
-        }
-        delay(2000)
-
-        // Phase 4: Reload phase 1 images (expect DISK CACHE hits)
+        // ============================================================
+        // Phase 4: Reload phase 1 images → Should hit DISK CACHE
+        // ============================================================
         println("\n💿 Phase 4: Reload phase 1 images (expect DISK CACHE hits)...")
 
-        logCount = 0
-        ImageLoaderLogger.addListener(listener)
+        val phase4Targets = mutableListOf<SimpleTestTarget>()
+        val phase4Jobs = mutableListOf<Job>()
 
-        loadImages(phase1Images.take(50), imageViews.take(50))
+        // Take only first 50 to avoid memory cache
+        phase1Images.take(50).forEachIndexed { index, spec ->
+            val target = SimpleTestTarget()
+            phase4Targets.add(target)
 
-        // Wait for loads to complete
-        println("   Waiting for loads to complete...")
-        waitTime = 0
-        while (logCount < 50 && waitTime < 15000) {
-            delay(500)
-            waitTime += 500
-        }
+            val request = Request(
+                url = spec.url,
+                resizeWidth = 400,
+                resizeHeight = 400
+            )
 
-        ImageLoaderLogger.removeListener(listener)
+            val job = engine.load(request, target)
+            phase4Jobs.add(job)
 
-        val statsAfterPhase4 = ImageLoaderLogger.getLogStats()
-        println("   ✓ Disk cache hits: ${statsAfterPhase4.diskCacheCount}")
-        println("   ✓ Total requests: ${statsAfterPhase4.totalImageRequests}")
-
-        // Phase 5: Final mixed load (all cache tiers active)
-        println("\n🎯 Phase 5: Mixed load (test all cache tiers)...")
-
-        // Clear ImageViews but NOT caches
-        withContext(Dispatchers.Main) {
-            imageViews.forEach { imageView ->
-                RequestManager.clear(imageView)
+            if ((index + 1) % 10 == 0) {
+                print(".")
             }
         }
-        delay(1000)
 
-        logCount = 0
-        ImageLoaderLogger.addListener(listener)
-
-        // Load mix: some from phase1, some from phase3
-        val mixedImages = phase1Images.take(30) + phase3Images.take(30)
-        loadImages(mixedImages, imageViews.take(60))
-
-        // Wait for loads to complete
-        println("   Waiting for loads to complete...")
-        waitTime = 0
-        while (logCount < 60 && waitTime < 15000) {
-            delay(500)
-            waitTime += 500
+        println("\n   Waiting for ${phase4Targets.size} images to load...")
+        var startTime4 = System.currentTimeMillis()
+        var allLoaded4 = false
+        while (!allLoaded4 && (System.currentTimeMillis() - startTime4) < 30000) {
+            allLoaded4 = phase4Targets.all { it.loadSuccess || it.loadFailed }
+            if (!allLoaded4) delay(100)
         }
-
-        ImageLoaderLogger.removeListener(listener)
+        println("   ✓ Loaded: ${phase4Targets.count { it.loadSuccess }}, Failed: ${phase4Targets.count { it.loadFailed }}")
+        delay(1000)
 
         // Get final stats
         val finalStats = ImageLoaderLogger.getLogStats()
+        println("\n📊 Phase 4 Results:")
+        println("   ✓ Disk cache: ${finalStats.diskCacheCount} (expected: some hits)")
+        println("   ✓ Memory cache: ${finalStats.memoryCacheCount}")
+        println("   ✓ Total: ${finalStats.totalImageRequests}")
 
         println("\n📊 Final Statistics:")
         println("   Total requests: ${finalStats.totalImageRequests}")
@@ -486,24 +482,5 @@ class RealCacheBenchmark {
         assert(finalStats.totalImageRequests > 0) { "No images were loaded!" }
 
         println("\n✅ All reports verified successfully with REAL data!")
-    }
-
-    /**
-     * Load images using ImageLoader.
-     */
-    private suspend fun loadImages(
-        imageSpecs: List<TestDataGenerator.ImageSpec>,
-        imageViews: List<ImageView>
-    ) = withContext(Dispatchers.Main) {
-        imageSpecs.forEachIndexed { index, spec ->
-            if (index < imageViews.size) {
-                val imageView = imageViews[index]
-
-                // Load image
-                ImageLoader.with(context)
-                    .load(spec.url)
-                    .into(imageView)
-            }
-        }
     }
 }

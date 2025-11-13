@@ -87,8 +87,11 @@ class Engine(
         activeResources.setOnResourceReleased { key, resource ->
             val bitmap = resource.getBitmap()
             if (!bitmap.isRecycled) {
+                android.util.Log.d("Engine", "🔄 Moving resource to Memory Cache: key=${key.take(20)}... size=${bitmap.byteCount / 1024}KB")
                 memoryCache.put(key, bitmap)
+                android.util.Log.d("Engine", "✅ Resource added to Memory Cache successfully")
             } else {
+                android.util.Log.w("Engine", "❌ Bitmap recycled, removing from cache: key=${key.take(20)}...")
                 memoryCache.remove(key)
             }
         }
@@ -166,7 +169,9 @@ class Engine(
         }
 
         // 2️⃣ Memory Cache
+        android.util.Log.d("Engine", "🔍 Checking Memory Cache for: ${req.url.take(50)}...")
         memoryCache.get(key)?.let { bitmap ->
+            android.util.Log.d("Engine", "✅ MEMORY CACHE HIT! key=${key.take(20)}... size=${bitmap.byteCount / 1024}KB")
             if (!bitmap.isRecycled) {
                 val res = EngineResource(key, bitmap, activeResources)
                 activeResources.put(key, res)
@@ -181,8 +186,11 @@ class Engine(
                 )
                 return true
             } else {
+                android.util.Log.w("Engine", "❌ Memory Cache bitmap recycled, removing")
                 memoryCache.remove(key)
             }
+        } ?: run {
+            android.util.Log.d("Engine", "❌ Memory Cache MISS for: ${req.url.take(50)}...")
         }
 
         return false

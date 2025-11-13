@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# ImageLoader Real Benchmark Runner
-# Automatically runs benchmark test, pulls results, and opens HTML report
+# ImageLoader MacroBenchmark Runner
+# Runs REAL RecyclerView benchmark test and pulls results
 
 set -e  # Exit on error
 
@@ -18,12 +18,13 @@ LOCAL_RESULTS_DIR="$PROJECT_DIR/benchmark-results"
 DEVICE_RESULTS_DIR="/sdcard/Android/data/com.example.imageloader.test/files/benchmark-results"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   ImageLoader Real Benchmark Runner               ║${NC}"
+echo -e "${BLUE}║   ImageLoader MacroBenchmark Runner               ║${NC}"
+echo -e "${BLUE}║   (Real RecyclerView + Scroll Test)                ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════╝${NC}"
 echo ""
 
 # Step 1: Check device connected
-echo -e "${YELLOW}[1/6]${NC} Checking for connected devices..."
+echo -e "${YELLOW}[1/5]${NC} Checking for connected devices..."
 DEVICES=$(adb devices | grep -v "List" | grep "device$" | wc -l)
 
 if [ "$DEVICES" -eq 0 ]; then
@@ -37,66 +38,73 @@ echo -e "${GREEN}✓${NC} Device found: ${DEVICE_NAME}"
 echo ""
 
 # Step 2: Clean old results and caches on device
-echo -e "${YELLOW}[2/6]${NC} Cleaning old results and caches on device..."
+echo -e "${YELLOW}[2/5]${NC} Cleaning old results and caches on device..."
 adb shell "rm -rf $DEVICE_RESULTS_DIR/*" 2>/dev/null || true
 
-# Clear ImageLoader caches to ensure cold start
-echo "   Clearing ImageLoader disk cache..."
-adb shell "rm -rf /data/data/com.example.imageloader.test/cache/*" 2>/dev/null || true
-adb shell "rm -rf /data/data/com.example.imageloader.test/files/*" 2>/dev/null || true
-
-# Clear app data cache
-echo "   Clearing app data..."
+# Clear ImageLoader caches
+echo "   Clearing ImageLoader caches..."
 adb shell "pm clear com.example.imageloader.test" 2>/dev/null || true
 
 echo -e "${GREEN}✓${NC} Old results and caches cleaned"
 echo ""
 
-# Step 3: Build test APK
-echo -e "${YELLOW}[3/6]${NC} Building test APK..."
+# Step 3: Build and install test APK
+echo -e "${YELLOW}[3/5]${NC} Building and installing test APK..."
 cd "$PROJECT_DIR"
 ./gradlew :ImageLoader:assembleDebugAndroidTest --quiet || {
     echo -e "${RED}❌ Build failed!${NC}"
     exit 1
 }
-echo -e "${GREEN}✓${NC} Test APK built successfully"
+
+./gradlew :ImageLoader:installDebugAndroidTest --quiet || {
+    echo -e "${RED}❌ Install failed!${NC}"
+    exit 1
+}
+
+echo -e "${GREEN}✓${NC} Test APK built and installed"
 echo ""
 
-# Step 4: Run benchmark test
-echo -e "${YELLOW}[4/6]${NC} Running REAL benchmark test..."
-echo -e "${BLUE}   This will take 30-60 seconds...${NC}"
-echo -e "${BLUE}   Loading 100 images (3 phases)${NC}"
+# Step 4: Run MacroBenchmark test
+echo -e "${YELLOW}[4/5]${NC} Running MacroBenchmark test..."
+echo -e "${BLUE}   This will:${NC}"
+echo -e "${BLUE}   - Launch RecyclerView with 500 items${NC}"
+echo -e "${BLUE}   - Scroll down/up multiple times${NC}"
+echo -e "${BLUE}   - Measure real-world performance${NC}"
+echo -e "${BLUE}   Takes about 60-90 seconds...${NC}"
 echo ""
 
+# Clear logcat
+adb logcat -c
+
+# Run test
 adb shell am instrument -w -e class \
-  com.example.imageloader.benchmark.suite.RealCacheBenchmark#testRealCachePerformance \
+  com.example.imageloader.benchmark.suite.MacroBenchmark#testRecyclerViewScrollBenchmark \
   com.example.imageloader.test/androidx.test.runner.AndroidJUnitRunner \
-  2>&1 | grep -E "(Starting REAL|Phase|Final Statistics|benchmark reports generated|✅|📊|🚀|🔥|📥|📤)" || true
+  2>&1 | grep -E "(Phase|Starting|Scrolling|Final|Generated|complete|✅|📊|🚀|🔥|📥|📤|🔄|⚡)" || true
 
 TEST_EXIT_CODE=${PIPESTATUS[0]}
 
 if [ $TEST_EXIT_CODE -ne 0 ]; then
     echo -e "${RED}❌ Test failed with exit code: $TEST_EXIT_CODE${NC}"
-    echo "   Check logcat for details: adb logcat | grep 'RealCacheBenchmark'"
+    echo "   Check logcat: adb logcat | grep MacroBenchmark"
     exit 1
 fi
 
 echo ""
-echo -e "${GREEN}✓${NC} Benchmark test completed successfully!"
+echo -e "${GREEN}✓${NC} MacroBenchmark test completed!"
 echo ""
 
 # Step 5: Pull results from device
-echo -e "${YELLOW}[5/6]${NC} Pulling results from device..."
+echo -e "${YELLOW}[5/5]${NC} Pulling results from device..."
 
-# Create local results directory if not exists
+# Create local results directory
 mkdir -p "$LOCAL_RESULTS_DIR"
 
-# Pull all files directly (not the parent directory)
+# Pull files
 adb pull "$DEVICE_RESULTS_DIR/" "$LOCAL_RESULTS_DIR/" 2>&1 | grep -v "pulled" || true
 
-# Fix: If files are in nested benchmark-results folder, move them up
+# Fix nested directory if needed
 if [ -d "$LOCAL_RESULTS_DIR/benchmark-results" ]; then
-    echo "   Moving files from nested directory..."
     mv "$LOCAL_RESULTS_DIR/benchmark-results"/* "$LOCAL_RESULTS_DIR/" 2>/dev/null || true
     rmdir "$LOCAL_RESULTS_DIR/benchmark-results" 2>/dev/null || true
 fi
@@ -112,60 +120,42 @@ echo "   CSV files:  $CSV_COUNT"
 echo "   HTML files: $HTML_COUNT"
 echo ""
 
-# Step 6: Open HTML report
-echo -e "${YELLOW}[6/6]${NC} Opening HTML report..."
-
-# Find the latest HTML file (search in all subdirectories too)
-LATEST_HTML=$(find "$LOCAL_RESULTS_DIR" -name "benchmark-*.html" -type f 2>/dev/null | head -1)
-
-if [ -z "$LATEST_HTML" ]; then
-    echo -e "${RED}❌ No HTML report found!${NC}"
-    echo "   Searched in: $LOCAL_RESULTS_DIR"
-    echo "   Available files:"
-    ls -la "$LOCAL_RESULTS_DIR" 2>/dev/null || echo "   (directory empty or not found)"
-    exit 1
-fi
-
-echo -e "${GREEN}✓${NC} Latest report: $(basename "$LATEST_HTML")"
-echo "   Full path: $LATEST_HTML"
-echo ""
-
-# Open in browser
-open "$LATEST_HTML"
-
-# Show summary from JSON
-LATEST_JSON=$(find "$LOCAL_RESULTS_DIR" -name "benchmark-*.json" -type f 2>/dev/null | head -1)
+# Show summary from latest JSON
+LATEST_JSON=$(find "$LOCAL_RESULTS_DIR" -name "benchmark-*.json" -type f 2>/dev/null | sort | tail -1)
 
 if [ -n "$LATEST_JSON" ]; then
     echo -e "${BLUE}╔════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║   Quick Summary                                    ║${NC}"
+    echo -e "${BLUE}║   MacroBenchmark Summary                           ║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════╝${NC}"
     echo ""
     
-    # Extract key metrics using grep and basic text processing
+    # Extract key metrics
     TOTAL_REQUESTS=$(grep -o '"totalRequests":[0-9]*' "$LATEST_JSON" | head -1 | cut -d':' -f2)
     CACHE_EFFICIENCY=$(grep -o '"cacheEfficiency":[0-9.]*' "$LATEST_JSON" | head -1 | cut -d':' -f2)
     OVERALL_SCORE=$(grep -o '"overallScore":[0-9.]*' "$LATEST_JSON" | head -1 | cut -d':' -f2)
+    AVG_FPS=$(grep -o '"avgFPS":[0-9.]*' "$LATEST_JSON" | head -1 | cut -d':' -f2)
     
     if [ -n "$TOTAL_REQUESTS" ] && [ "$TOTAL_REQUESTS" != "0" ]; then
         echo -e "   ${GREEN}✓${NC} Total Requests: ${TOTAL_REQUESTS}"
         echo -e "   ${GREEN}✓${NC} Cache Efficiency: ${CACHE_EFFICIENCY}%"
         echo -e "   ${GREEN}✓${NC} Overall Score: ${OVERALL_SCORE}/100"
+        [ -n "$AVG_FPS" ] && echo -e "   ${GREEN}✓${NC} Avg FPS: ${AVG_FPS}"
     else
-        echo -e "   ${RED}⚠${NC}  Warning: Metrics are zero (no images loaded?)"
+        echo -e "   ${RED}⚠${NC}  Warning: Metrics are zero"
     fi
     echo ""
 fi
 
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}✨ Benchmark complete! HTML report opened in browser.${NC}"
+echo -e "${GREEN}✨ MacroBenchmark complete!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo ""
 echo "📂 Results location: $LOCAL_RESULTS_DIR"
 echo ""
-echo "🔍 View logcat details:"
-echo "   adb logcat | grep RealCacheBenchmark"
-echo ""
-echo "📊 View JSON:"
+echo "📊 View results:"
 echo "   cat $LATEST_JSON | python3 -m json.tool"
+echo "   open $LOCAL_RESULTS_DIR/benchmark-*.html"
+echo ""
+echo "🔍 View detailed logs:"
+echo "   adb logcat -d | grep MacroBenchmark"
 echo ""

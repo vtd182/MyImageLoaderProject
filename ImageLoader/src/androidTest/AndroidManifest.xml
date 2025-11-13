@@ -7,4 +7,12 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     
+    <application android:theme="@android:style/Theme.Material.Light">
+        <!-- Activity cho benchmark testing -->
+        <activity
+            android:name="com.example.imageloader.benchmark.suite.BenchmarkTestActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+    
 </manifest>
