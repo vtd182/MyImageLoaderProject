@@ -237,12 +237,10 @@ class RealisticMacroBenchmark {
         val timestamp = System.currentTimeMillis()
 
         val html = File(outputDir, "realistic-benchmark-$timestamp.html")
-        val json = File(outputDir, "realistic-benchmark-$timestamp.json")
 
         SimplifiedHtmlReporter.generate(result, html)
-        json.writeText("See HTML for details")
 
-        log("Đã tạo report HTML và JSON")
+        log("Đã tạo report HTML")
         log("Thư mục: ${outputDir.absolutePath}")
     }
 
