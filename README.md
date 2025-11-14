@@ -11,7 +11,8 @@
 6. [Hướng Dẫn Sử Dụng](#6-hướng-dẫn-sử-dụng)
 7. [Testing & Quality](#7-testing--quality)
 8. [Performance Optimization](#8-performance-optimization)
-9. [Dependencies & Requirements](#9-dependencies--requirements)
+9. [Benchmark System](#9-benchmark-system)
+10. [Dependencies & Requirements](#10-dependencies--requirements)
 
 ---
 
@@ -260,10 +261,12 @@ ImageLoader.with(context)
 
 **Luồng xử lý:**
 
-1. **Initial Load**: Kiểm tra disk cache → Load tất cả pages đã lưu → Flatten thành list → Hiển thị ngay
+1. **Initial Load**: Kiểm tra disk cache → Load tất cả pages đã lưu → Flatten thành list → Hiển thị
+   ngay
 2. **Load More**: Fetch network → Save page to disk incrementally → Accumulate pages
 3. **Preload**: Background fetch → Save to memory cache + disk cache
-4. **App Restart Offline**: Load tất cả pages từ disk (VD: scroll đến page 10 → restart offline → vẫn hiển thị đủ 10 pages)
+4. **App Restart Offline**: Load tất cả pages từ disk (VD: scroll đến page 10 → restart offline →
+   vẫn hiển thị đủ 10 pages)
 5. **Refresh**: Clear cả memory + disk cache → Fetch page 1 → Save to disk
 
 **Logging & Monitoring:**
@@ -275,7 +278,8 @@ ImageLoader.with(context)
 
 **Lợi ích:**
 
-- **Progressive offline support**: Scroll đến page 10 → offline → vẫn xem được 10 pages (không chỉ page 1)
+- **Progressive offline support**: Scroll đến page 10 → offline → vẫn xem được 10 pages (không chỉ
+  page 1)
 - **Fast startup**: Load tức thì từ disk với toàn bộ pages đã scroll
 - **Data persistence**: Tồn tại khi app bị kill
 - **Bandwidth saving**: Giảm API calls không cần thiết
@@ -364,7 +368,7 @@ image-loader/
 │   │   │
 │   │   ├── logger/
 │   │   │   ├── ImageLoaderLogger.kt    # Logger singleton
-│   │   │   ├── LogEntry.kt             # Log data models
+│   │   │   ├── LogEntry.kt             # Log data models (sealed class hierarchy)
 │   │   │   └── LogViewer.kt            # Viewer launcher
 │   │   │
 │   │   ├── ui/
@@ -375,18 +379,32 @@ image-loader/
 │   │   └── drawable/
 │   │       └── ShimmerDrawable.kt      # Loading animation
 │   │
-│   └── src/test/java/                  # Unit tests
+│   ├── src/test/java/                  # Unit tests
+│   │   └── com/example/imageloader/
+│   │       ├── core/
+│   │       │   ├── EngineTest.kt
+│   │       │   └── ImageLoaderTest.kt
+│   │       ├── cache/
+│   │       │   └── MemoryCacheTest.kt
+│   │       ├── logger/
+│   │       │   └── ImageLoaderLoggerTest.kt
+│   │       └── ui/
+│   │           ├── LogAdapterTest.kt
+│   │           └── LogViewerPresentationTest.kt
+│   │
+│   └── src/androidTest/java/           # Instrumented tests & benchmarks
 │       └── com/example/imageloader/
-│           ├── core/
-│           │   ├── EngineTest.kt
-│           │   └── ImageLoaderTest.kt
-│           ├── cache/
-│           │   └── MemoryCacheTest.kt
-│           ├── logger/
-│           │   └── ImageLoaderLoggerTest.kt
-│           └── ui/
-│               ├── LogAdapterTest.kt
-│               └── LogViewerPresentationTest.kt
+│           └── benchmark/
+│               ├── BenchmarkConfig.kt          # Centralized benchmark configuration
+│               ├── TestDataGenerator.kt        # Test data generation utilities
+│               ├── suite/
+│               │   ├── RealisticMacroBenchmark.kt  # Main benchmark test
+│               │   ├── BenchmarkTestActivity.kt    # Test activity với RecyclerView
+│               │   └── PhotoAdapter.kt             # Adapter cho benchmark
+│               └── reporter/
+│                   ├── SimplifiedAnalyzer.kt       # Analyze benchmark results
+│                   ├── SimplifiedBenchmarkResult.kt # Result data classes
+│                   └── SimplifiedHtmlReporter.kt   # Generate HTML reports
 │
 └── app/                                # Sample application
     ├── src/main/java/com/example/myimageloaderproject/
@@ -501,6 +519,19 @@ image-loader/
             ├── dimens.xml
             ├── strings.xml
             └── themes.xml
+│
+├── benchmark-results/               # Benchmark output directory
+│   └── benchmark-results/
+│       ├── realistic-benchmark-*.html  # Interactive HTML reports
+│       └── realistic-benchmark-*.json  # JSON data files
+│
+├── run_realistic_benchmark.sh       # Script to run benchmark tests
+├── generate_demo_report.kts         # Script to generate demo reports
+├── AGENTS.md                        # Guide for AI agents
+├── README.md                        # Project documentation
+├── present.md                       # Presentation notes
+├── build.gradle.kts                 # Root build configuration
+└── settings.gradle.kts              # Gradle settings
 ```
 
 ### 3.2 Luồng Xử Lý Request
@@ -748,6 +779,65 @@ fun release() {
 
 Chi tiết xem Section 2.6 - Real-time Logging System
 
+#### **LogEntry Sealed Class Hierarchy**
+
+Logger module sử dụng sealed class hierarchy để type-safe logging:
+
+```kotlin
+sealed class LogEntry
+├── MessageLog: General text messages với levels và categories
+└── ImageLoadLog: Image load events với timing details
+```
+
+**LogLevel Enum:**
+
+- `VERBOSE`, `DEBUG`, `INFO`, `WARNING`, `ERROR`
+
+**LogCategory Enum:**
+
+- `ENGINE`, `CACHE`, `NETWORK`, `DECODE`, `TRANSFORM`, `IMAGE_LOAD`, `GENERAL`
+
+**MessageLog:**
+
+```kotlin
+MessageLog(
+    level = LogLevel.ERROR,
+    category = LogCategory.NETWORK,
+    tag = "HttpFetcher",
+    message = "Failed to fetch image",
+    throwable = IOException("Connection timeout")
+)
+```
+
+**ImageLoadLog:**
+
+```kotlin
+ImageLoadLog(
+    url = "https://example.com/photo.jpg",
+    source = LogSource.NETWORK,
+    fetchTimeMs = 300,
+    decodeTimeMs = 50,
+    transformTimeMs = 20,
+    totalTimeMs = 370,
+    transformCount = 1,
+    fileSizeBytes = 245760  // NEW: Track file size for analysis
+)
+```
+
+**LogSource Enum:**
+
+- `ACTIVE_CACHE` (~0-2ms)
+- `MEMORY_CACHE` (~1-5ms)
+- `DISK_CACHE` (~20-100ms)
+- `NETWORK` (~100-1000ms)
+
+**Lợi ích:**
+
+- Type-safe: Compiler đảm bảo đúng kiểu log
+- Structured: Dễ dàng lọc và phân tích
+- Performance tracking: Các trường timing tích hợp sẵn
+- File size tracking: Phân tích bandwidth sử dụng
+
 ---
 
 ## 5. Chi Tiết App Module
@@ -981,35 +1071,35 @@ class PhotoLocalDataSource(
     suspend fun getCachedPhotos(): CachedPhotoData? {
         return diskCache.loadBackup()
     }
-    
+
     /**
      * Save một page vào disk cache (incremental).
      */
     suspend fun savePage(page: Int, photos: List<UnsplashPhoto>) {
         diskCache.savePage(page, photos)
     }
-    
+
     suspend fun clearDiskCache() {
         diskCache.clearBackup()
     }
-    
+
     // Memory cache (preload) operations
     fun getPreloadedPage(page: Int): List<UnsplashPhoto>? {
         return memoryCache.getPage(page)
     }
-    
+
     fun savePreloadedPage(page: Int, photos: List<UnsplashPhoto>) {
         memoryCache.savePage(page, photos)
     }
-    
+
     fun hasPreloadedPage(page: Int): Boolean {
         return memoryCache.hasPage(page)
     }
-    
+
     fun clearMemoryCache() {
         memoryCache.clear()
     }
-    
+
     fun clearOldPreloadedPages(currentPage: Int) {
         memoryCache.clearOldPages(currentPage)
     }
@@ -1023,12 +1113,12 @@ class PhotoDiskCache(
     private val fileStorageProvider: FileStorageProvider
 ) {
     private val gson = Gson()
-    
+
     companion object {
         private const val BACKUP_FILE_NAME = "photo_backup.json"
         private const val TAG = "PhotoDiskCache"
     }
-    
+
     /**
      * Save hoặc update một page vào disk cache.
      * Merge với data hiện có (nếu có).
@@ -1038,25 +1128,28 @@ class PhotoDiskCache(
             try {
                 val existing = loadBackupInternal()
                 val pagesMap = existing?.pages?.toMutableMap() ?: mutableMapOf()
-                
+
                 pagesMap[page] = photos
-                
+
                 val backup = CachedPhotoData(
                     pages = pagesMap,
                     timestamp = System.currentTimeMillis()
                 )
-                
+
                 val json = gson.toJson(backup)
                 fileStorageProvider.writeTextFile(BACKUP_FILE_NAME, json)
-                
+
                 val totalPhotos = pagesMap.values.sumOf { it.size }
-                ImageLoaderLogger.d(TAG, "Saved page $page (${photos.size} photos). Total cached: $totalPhotos photos across ${pagesMap.size} pages")
+                ImageLoaderLogger.d(
+                    TAG,
+                    "Saved page $page (${photos.size} photos). Total cached: $totalPhotos photos across ${pagesMap.size} pages"
+                )
             } catch (e: Exception) {
                 ImageLoaderLogger.e(TAG, "Failed to save page $page", e)
             }
         }
     }
-    
+
     /**
      * Load tất cả pages từ disk cache.
      * Returns CachedPhotoData với pages map.
@@ -1065,21 +1158,24 @@ class PhotoDiskCache(
         return withContext(Dispatchers.IO) {
             try {
                 val backup = loadBackupInternal() ?: return@withContext null
-                
+
                 if (isCacheExpired(backup.timestamp)) {
                     ImageLoaderLogger.d(TAG, "Cache expired, clearing")
                     fileStorageProvider.deleteFile(BACKUP_FILE_NAME)
                     return@withContext null
                 }
-                
+
                 val totalPhotos = backup.pages.values.sumOf { it.size }
                 val maxPage = backup.pages.keys.maxOrNull() ?: 0
-                
+
                 ImageLoaderLogger.jsonPhotoCount = totalPhotos
                 ImageLoaderLogger.jsonCurrentPage = maxPage
-                
-                ImageLoaderLogger.i(TAG, "Loaded from disk: $totalPhotos photos across ${backup.pages.size} pages (max page: $maxPage)")
-                
+
+                ImageLoaderLogger.i(
+                    TAG,
+                    "Loaded from disk: $totalPhotos photos across ${backup.pages.size} pages (max page: $maxPage)"
+                )
+
                 backup
             } catch (e: Exception) {
                 ImageLoaderLogger.e(TAG, "Failed to load backup", e)
@@ -1087,7 +1183,7 @@ class PhotoDiskCache(
             }
         }
     }
-    
+
     private fun isCacheExpired(timestamp: Long): Boolean {
         val expiryTime = AppConfig.CACHE_EXPIRY_HOURS * 60 * 60 * 1000
         return System.currentTimeMillis() - timestamp > expiryTime
@@ -1096,7 +1192,7 @@ class PhotoDiskCache(
 
 /**
  * CachedPhotoData - Structure lưu trữ pages trong disk cache.
- * 
+ *
  * @param pages Map từ page number -> list photos
  * @param timestamp Thời điểm cache được tạo (để check expiry)
  */
@@ -1215,16 +1311,16 @@ class PhotoRepositoryImpl(
             if (localDataSource.hasPreloadedPage(page)) {
                 return Result.Success(Unit)
             }
-            
+
             val photosDTO = remoteDataSource.getPhotos(page, AppConfig.PER_PAGE)
             val photos = photoMapper.toDomainList(photosDTO)
-            
+
             localDataSource.savePreloadedPage(page, photos)
             localDataSource.clearOldPreloadedPages(page)
-            
+
             // Also save to disk for offline support
             localDataSource.savePage(page = page, photos = photos)
-            
+
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(errorMapper.mapError(e))
@@ -1909,16 +2005,256 @@ Số liệu lấy từ `ImageLoader/build/reports/jacoco/jacocoTestReport/html/i
 
 ---
 
-## 9. Dependencies & Requirements
+## 9. Benchmark System
 
-### 9.1 Requirements
+### 9.1 Giới Thiệu
+
+ImageLoader tích hợp một **benchmark framework** để đo lường và phân tích hiệu suất thực tế của thư
+viện trong các tình huống sử dụng phổ biến.
+
+**Mục tiêu:**
+
+- Đo lường hiệu suất cache (hit rates, latency)
+- So sánh Network vs Disk decode performance
+- Phân tích file size và bandwidth usage
+- Mô phỏng hành vi người dùng thực tế (realistic scrolling patterns)
+- Tạo báo cáo HTML trực quan với charts và tables
+
+### 9.2 RealisticMacroBenchmark
+
+Benchmark chính mô phỏng hành vi cuộn thực tế của người dùng với **4 giai đoạn:**
+
+#### **Phase 1: Initial Load (Warm-up)**
+
+```
+Mục tiêu: Tải 200 ảnh unique để xây dựng cache
+Hành vi: Cuộn xuống từ từ, đợi images load
+```
+
+- Cuộn từng bước (70% screen height)
+- Adaptive wait time dựa trên image size:
+    - Tiny (200x200): 1.0x base wait (2.2s)
+    - Small (400x600): 1.2x (2.6s)
+    - Medium (1080x1440): 1.5x (3.3s)
+    - Large (2560x1440): 2.0x (4.4s)
+    - Huge (4096x4096): 2.5x (5.5s)
+- Đợi load completion trước khi scroll tiếp
+
+#### **Phase 2: Cache Test (Scroll Back)**
+
+```
+Mục tiêu: Kiểm tra Memory/Disk cache hit rates
+Hành vi: Cuộn lên 200 bước
+```
+
+- Scroll -step với delay 500ms
+- Đo lường cache hits (Active → Memory → Disk)
+- Log cache stats sau phase
+
+#### **Phase 3: Stress Test (Flick Scroll)**
+
+```
+Mục tiêu: Stress ActiveResources với bind/unbind liên tục
+Hành vi: Cuộn nhanh lên xuống 60 lần
+```
+
+- Alternating scroll direction mỗi 220ms
+- Tạo rapid view recycling
+- Test reference counting stability
+
+#### **Phase 4: Long Session (Deep Scroll)**
+
+```
+Mục tiêu: Mô phỏng phiên dài, test cache eviction
+Hành vi: Scroll xuống → lên → xuống
+```
+
+- 120 scrolls xuống (delay 350ms)
+- 120 scrolls lên (delay 300ms)
+- 80 scrolls xuống lại (delay 320ms)
+- Test cache recovery và memory management
+
+### 9.3 TestDataGenerator
+
+Utility để tạo test datasets với các kích thước và sources khác nhau:
+
+**Size Categories:**
+
+```kotlin
+enum class SizeCategory(val width: Int, val height: Int) {
+    TINY(200, 200),       // Thumbnails
+    SMALL(400, 600),      // List items
+    MEDIUM(1080, 1440),   // Full screen
+    LARGE(2560, 1440),    // High-res
+    HUGE(4096, 4096)      // Ultra high-res (stress test)
+}
+```
+
+**Nguồn ảnh:**
+
+- **Lorem Picsum**: Ảnh không giới hạn, không có rate limit
+  ```kotlin
+  generatePicsumUrls(count = 1000, category = SizeCategory.MEDIUM)
+  ```
+- **Unsplash**: Ảnh chất lượng cao thực tế (giới hạn 16 IDs)
+  ```kotlin
+  generateUnsplashUrls(count = 16)
+  ```
+
+**Các loại Dataset:**
+
+**Mixed Dataset (phân bổ thực tế):**
+
+```kotlin
+generateMixedDataset(1000) // Returns:
+// - 10% tiny
+// - 50% small
+// - 25% medium
+// - 10% large
+// - 5% huge
+```
+
+**Dataset Stress Test:**
+
+```kotlin
+generateStressTestDataset(100) // Returns:
+// - 70% large
+// - 30% huge
+```
+
+### 9.4 Hệ Thống Báo Cáo HTML
+
+#### **SimplifiedAnalyzer**
+
+Phân tích logs và tính toán metrics:
+
+**Cache Metrics:**
+
+- Total requests, hits per cache tier
+- Cache efficiency percentage
+- Average latency per tier
+
+**Decode Metrics:**
+
+- Network vs Disk decode time comparison
+- P50, P95, P99 percentiles
+- Decode time by image size
+
+**File Size Stats:**
+
+- Average, min, max file sizes
+- Size distribution by category
+- Total bandwidth usage
+
+#### **SimplifiedHtmlReporter**
+
+Generate interactive HTML reports với:
+
+**Tính năng:**
+
+- **Biểu đồ phân bổ cache hits** (Bar chart)
+- **So sánh hiệu năng decode** (Network vs Disk)
+- **Phân tích kích thước file** (Biểu đồ phân bổ)
+- **Bảng dữ liệu thô** với lọc và sắp xếp:
+    - Lọc theo nguồn (Network/Disk)
+    - Lọc theo kích thước ảnh
+    - Tìm kiếm theo URL
+    - Sắp xếp theo thời gian, kích thước file, URL
+    - Đếm số lượng sau khi lọc (real-time)
+
+**Ví dụ kết quả:**
+
+```
+benchmark-results/
+└── realistic-benchmark-1763094897163.html
+    ├── Tổng quan test (thời lượng, tổng số, hiệu suất)
+    ├── Phân bổ Cache Hits (biểu đồ + thống kê)
+    ├── Hiệu năng Decode (so sánh Network vs Disk)
+    ├── Phân tích File Size (trung bình, phân bổ)
+    └── Bảng tất cả Requests (có thể lọc, sắp xếp)
+```
+
+### 9.5 Chạy Benchmarks
+
+#### **Sử dụng Script (Khuyến nghị)**
+
+```bash
+./run_realistic_benchmark.sh
+```
+
+**Script thực hiện:**
+
+1. Kiểm tra device/emulator đã kết nối
+2. Xóa caches cũ
+3. Build và install test APK
+4. Chạy RealisticMacroBenchmark
+5. Pull kết quả từ device
+6. Hiển thị thống kê tổng hợp
+
+**Kết quả:**
+
+```
+Results location: ./benchmark-results/benchmark-results/
+View results: open realistic-benchmark-*.html
+```
+
+#### **Chạy Thủ Công với Gradle**
+
+```bash
+# Build test APK
+./gradlew :ImageLoader:assembleDebugAndroidTest
+
+# Install test APK
+./gradlew :ImageLoader:installDebugAndroidTest
+
+# Run benchmark test
+adb shell am instrument -w -r \
+    -e debug false \
+    -e class 'com.example.imageloader.benchmark.suite.RealisticMacroBenchmark#testRealisticScrollBehavior' \
+    com.example.imageloader.test/androidx.test.runner.AndroidJUnitRunner
+
+# Pull results
+adb pull /sdcard/Android/data/com.example.imageloader.test/files/benchmark-results/ ./benchmark-results/
+```
+
+#### **Xem Kết Quả**
+
+```bash
+# Open HTML report
+open benchmark-results/benchmark-results/realistic-benchmark-*.html
+
+# View detailed logs
+adb logcat -d | grep "Benchmark"
+```
+
+### 9.6 Các Nguyên Tắc Tốt Nhất
+
+**Môi trường Benchmark:**
+
+- Sử dụng thiết bị thực (không phải emulator)
+- Điều kiện mạng ổn định (WiFi stable)
+- Đóng các app chạy nền
+- Sạc đủ pin (>50%)
+- Nhiệt độ thiết bị ổn định
+
+**Lặp lại:**
+
+- Chạy ít nhất 3 lần
+- Lấy kết quả trung vị
+- Loại bỏ outliers (lần chạy đầu thường chậm hơn)
+
+---
+
+## 10. Dependencies & Requirements
+
+### 10.1 Requirements
 
 - **Android SDK**: 24+ (Android 7.0+)
 - **Kotlin**: 2.0+
 - **Gradle**: 8.0+
 - **JVM**: 11+
 
-### 9.2 ImageLoader Module Dependencies
+### 10.2 ImageLoader Module Dependencies
 
 ```kotlin
 dependencies {
@@ -1938,7 +2274,7 @@ dependencies {
 }
 ```
 
-### 9.3 App Module Dependencies
+### 10.3 App Module Dependencies
 
 ```kotlin
 dependencies {
@@ -1983,15 +2319,15 @@ dependencies {
 
 ---
 
-## 10. Tài Liệu Tham Khảo
+## 11. Tài Liệu Tham Khảo
 
-### 10.1 Inspired By
+### 11.1 Inspired By
 
 - [Glide](https://github.com/bumptech/glide) - Image loading framework
 - [Picasso](https://github.com/square/picasso) - Simple image loading
 - [Coil](https://github.com/coil-kt/coil) - Kotlin-first image loading
 
-### 10.2 Các Khái Niệm Liên Quan
+### 11.2 Các Khái Niệm Liên Quan
 
 - **LRU Cache**: Least Recently Used eviction policy
 - **Reference Counting**: Memory management technique
@@ -2001,7 +2337,7 @@ dependencies {
 - **MVVM**: Model-View-ViewModel pattern
 - **Coroutines**: Kotlin async programming
 
-### 10.3 API Documentation
+### 11.3 API Documentation
 
 - [Android Bitmap](https://developer.android.com/reference/android/graphics/Bitmap)
 - [OkHttp](https://square.github.io/okhttp/)
