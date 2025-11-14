@@ -1,5 +1,7 @@
 package com.example.imageloader.benchmark.reporter
 
+import android.os.Build
+
 /**
  * Simplified Benchmark Results - Focus on Cache Performance
  * 
@@ -12,8 +14,8 @@ data class SimplifiedBenchmarkResult(
     val testConfig: TestConfig,
     val cacheMetrics: CacheMetrics,
     val decodeMetrics: DecodeMetrics,
-    val rawRequestData: List<RawRequestData>,  // NEW: All requests (Network + Disk) unified
-    val fileSizeStats: FileSizeStats?          // NEW: File size analysis
+    val rawRequestData: List<RawRequestData>,
+    val fileSizeStats: FileSizeStats?
 )
 
 data class TestConfig(
@@ -102,6 +104,23 @@ data class RawRequestData(
 )
 
 /**
+ * DeviceInfo - Information about the test device
+ */
+data class DeviceInfo(
+    val manufacturer: String = Build.MANUFACTURER,
+    val model: String = Build.MODEL,
+    val androidVersion: Int = Build.VERSION.SDK_INT,
+    val androidRelease: String = Build.VERSION.RELEASE,
+    val cpuAbi: String = Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown",
+    val totalMemoryMB: Long,
+    val availableMemoryMB: Long,
+    val screenDensity: Float,
+    val screenResolution: String,
+    val isEmulator: Boolean = Build.FINGERPRINT.contains("generic") || 
+                              Build.PRODUCT.contains("sdk")
+)
+
+/**
  * FileSizeStats - Analysis of file sizes
  */
 data class FileSizeStats(
@@ -110,6 +129,6 @@ data class FileSizeStats(
     val maxFileSizeBytes: Long,
     val avgFileSizeKB: Double,
     val totalFileSizeKB: Double,
-    val fileSizeByCategory: Map<String, Long>,  // tiny/small/medium/large/huge → avg size
-    val sizeDistribution: List<Pair<String, Int>>  // Size ranges → count
+    val fileSizeByCategory: Map<String, Long>,
+    val sizeDistribution: List<Pair<String, Int>>
 )
