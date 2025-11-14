@@ -28,7 +28,8 @@ object SimplifiedAnalyzer {
         val testConfig = buildTestConfig(testStartTime, testEndTime, imageSpecs)
         val cacheMetrics = analyzeCacheMetrics(imageLoadLogs)
         val decodeMetrics = analyzeDecodeMetrics(imageLoadLogs)
-        val imageDetails = buildImageDetails(imageLoadLogs)
+        val rawRequestData = buildRawRequestData(imageLoadLogs)
+        val fileSizeStats = analyzeFileSizes(imageLoadLogs)
         
         return SimplifiedBenchmarkResult(
             timestamp = testStartTime,
@@ -36,7 +37,8 @@ object SimplifiedAnalyzer {
             testConfig = testConfig,
             cacheMetrics = cacheMetrics,
             decodeMetrics = decodeMetrics,
-            imageDetails = imageDetails
+            rawRequestData = rawRequestData,
+            fileSizeStats = fileSizeStats
         )
     }
     
@@ -195,26 +197,75 @@ object SimplifiedAnalyzer {
         )
     }
     
-    private fun buildImageDetails(logs: List<ImageLoadLog>): List<ImageLoadDetail> {
-        return logs.map { log ->
-            val size = when {
-                log.url.contains("/200/200") -> "tiny"
-                log.url.contains("/400/600") -> "small"
-                log.url.contains("/1080/1440") -> "medium"
-                log.url.contains("/2560/1440") -> "large"
-                log.url.contains("/4096/4096") -> "huge"
-                else -> "unknown"
-            }
-            
-            ImageLoadDetail(
+    private fun buildRawRequestData(logs: List<ImageLoadLog>): List<RawRequestData> {
+        // Merge Network and Disk requests into one unified list
+        val relevantLogs = logs.filter { 
+            it.source == LogSource.NETWORK || it.source == LogSource.DISK_CACHE 
+        }
+        
+        return relevantLogs.map { log ->
+            RawRequestData(
                 url = log.url,
                 source = log.source.name,
                 totalTime = log.totalTimeMs,
+                fetchTime = log.fetchTimeMs,
                 decodeTime = log.decodeTimeMs,
                 transformTime = log.transformTimeMs,
-                imageSize = size,
-                timestamp = log.timestamp
+                fileSizeBytes = log.fileSizeBytes,
+                imageSize = detectImageSize(log.url)
             )
+        }
+    }
+    
+    private fun analyzeFileSizes(logs: List<ImageLoadLog>): FileSizeStats? {
+        val logsWithSize = logs.filter { it.fileSizeBytes != null && it.fileSizeBytes > 0 }
+        if (logsWithSize.isEmpty()) return null
+        
+        val sizes = logsWithSize.mapNotNull { it.fileSizeBytes }
+        val avgSize = sizes.average().toLong()
+        val minSize = sizes.minOrNull() ?: 0
+        val maxSize = sizes.maxOrNull() ?: 0
+        val totalSize = sizes.sum()
+        
+        // Group by image category
+        val sizesByCategory = mutableMapOf<String, MutableList<Long>>()
+        logsWithSize.forEach { log ->
+            val category = detectImageSize(log.url)
+            sizesByCategory.getOrPut(category) { mutableListOf() }.add(log.fileSizeBytes!!)
+        }
+        
+        val avgByCategory = sizesByCategory.mapValues { (_, sizes) ->
+            sizes.average().toLong()
+        }
+        
+        // Size distribution (buckets)
+        val distribution = mutableListOf<Pair<String, Int>>()
+        distribution.add("< 50 KB" to sizes.count { it < 50 * 1024 })
+        distribution.add("50-100 KB" to sizes.count { it in (50 * 1024)..(100 * 1024) })
+        distribution.add("100-200 KB" to sizes.count { it in (100 * 1024)..(200 * 1024) })
+        distribution.add("200-500 KB" to sizes.count { it in (200 * 1024)..(500 * 1024) })
+        distribution.add("500 KB - 1 MB" to sizes.count { it in (500 * 1024)..(1024 * 1024) })
+        distribution.add("> 1 MB" to sizes.count { it > 1024 * 1024 })
+        
+        return FileSizeStats(
+            avgFileSizeBytes = avgSize,
+            minFileSizeBytes = minSize,
+            maxFileSizeBytes = maxSize,
+            avgFileSizeKB = avgSize / 1024.0,
+            totalFileSizeKB = totalSize / 1024.0,
+            fileSizeByCategory = avgByCategory,
+            sizeDistribution = distribution
+        )
+    }
+    
+    private fun detectImageSize(url: String): String {
+        return when {
+            url.contains("/200/200") -> "tiny"
+            url.contains("/400/600") -> "small"
+            url.contains("/1080/1440") -> "medium"
+            url.contains("/2560/1440") -> "large"
+            url.contains("/4096/4096") -> "huge"
+            else -> "unknown"
         }
     }
     

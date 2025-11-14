@@ -177,7 +177,8 @@ data class ImageLoadLog(
     val cacheWriteTimeMs: Long? = null,
     val totalTimeMs: Long,
     val transformCount: Int = 0,
-    val error: String? = null
+    val error: String? = null,
+    val fileSizeBytes: Long? = null  // NEW: Track file size for analysis
 ) : LogEntry(
     timestamp = timestamp,
     level = if (error != null) LogLevel.ERROR else LogLevel.INFO,

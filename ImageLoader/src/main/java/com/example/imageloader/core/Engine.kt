@@ -279,7 +279,8 @@ class Engine(
                     startTime = startTime,
                     decodeTimeMs = decodeTime,
                     transformTimeMs = transformTime,
-                    transformCount = req.transformations.size
+                    transformCount = req.transformations.size,
+                    fileSizeBytes = bytes.size.toLong()
                 )
                 return
             } catch (e: Exception) {
@@ -314,7 +315,8 @@ class Engine(
                 decodeTimeMs = decodeTime,
                 transformTimeMs = transformTime,
                 cacheWriteTimeMs = cacheTime,
-                transformCount = req.transformations.size
+                transformCount = req.transformations.size,
+                fileSizeBytes = result.bytes.size.toLong()
             )
         } catch (e: Exception) {
             when (e) {
@@ -445,7 +447,8 @@ class Engine(
         transformTimeMs: Long? = null,
         cacheWriteTimeMs: Long? = null,
         transformCount: Int? = null,
-        error: String? = null
+        error: String? = null,
+        fileSizeBytes: Long? = null
     ) {
         ImageLoaderLogger.log(
             ImageLoadLog(
@@ -457,7 +460,8 @@ class Engine(
                 cacheWriteTimeMs = cacheWriteTimeMs,
                 totalTimeMs = System.currentTimeMillis() - startTime,
                 transformCount = transformCount ?: 0,
-                error = error
+                error = error,
+                fileSizeBytes = fileSizeBytes
             )
         )
     }

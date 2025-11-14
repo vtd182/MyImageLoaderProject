@@ -119,6 +119,41 @@ object SimplifiedHtmlReporter {
             color: #333;
         }
         tr:hover { background: #f9f9f9; }
+        tr.outlier { background: #ffebee !important; }
+        tr.outlier:hover { background: #ffcdd2 !important; }
+        
+        details {
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background: #fafafa;
+        }
+        
+        summary {
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 18px;
+            color: #667eea;
+            user-select: none;
+            padding: 10px;
+            margin: -15px -15px 15px -15px;
+            background: #f0f0f0;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        summary:hover {
+            background: #e8e8e8;
+        }
+        
+        summary::marker {
+            font-size: 1.2em;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            margin-top: 15px;
+        }
         
         .badge {
             display: inline-block;
@@ -193,8 +228,8 @@ object SimplifiedHtmlReporter {
         ${buildOverviewSection(result)}
         ${buildCacheHitsSection(result)}
         ${buildDecodeComparisonSection(result)}
-        ${buildOutliersSection(result)}
-        ${buildImageDetailsSection(result)}
+        ${buildFileSizeAnalysisSection(result)}
+        ${buildUnifiedRawDataSection(result)}
     </div>
     
     <script>
@@ -385,68 +420,28 @@ object SimplifiedHtmlReporter {
         """
     }
     
-    private fun buildOutliersSection(result: SimplifiedBenchmarkResult): String {
-        val outliers = result.decodeMetrics.outliers
+    private fun buildUnifiedRawDataSection(result: SimplifiedBenchmarkResult): String {
+        val data = result.rawRequestData
+        if (data.isEmpty()) return ""
         
-        if (outliers.isEmpty()) {
-            return """
-            <div class="section">
-                <h2>⚠️ Decode Outliers</h2>
-                <p style="color: #666;">No outliers detected (decode time < 2x average)</p>
-            </div>
-            """
-        }
+        val networkCount = data.count { it.source == "NETWORK" }
+        val diskCount = data.count { it.source == "DISK_CACHE" }
         
         return """
         <div class="section">
-            <h2>⚠️ Decode Outliers (> 2x Average)</h2>
-            <p style="color: #666; margin-bottom: 15px;">Images that took significantly longer to decode</p>
+            <h2>📊 All Requests - Raw Data</h2>
+            <p style="color: #666; margin-bottom: 15px;">
+                Total: ${data.size} requests | Network: $networkCount | Disk Cache: $diskCount
+            </p>
             
-            <table>
-                <thead>
-                    <tr>
-                        <th>URL</th>
-                        <th>Source</th>
-                        <th>Decode Time</th>
-                        <th>Average</th>
-                        <th>Ratio</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${outliers.take(20).joinToString("") { outlier ->
-                        """
-                        <tr>
-                            <td class="url-cell" title="${outlier.url}">${outlier.url}</td>
-                            <td><span class="badge ${outlier.source.lowercase()}">${outlier.source}</span></td>
-                            <td>${outlier.decodeTime}ms</td>
-                            <td>${String.format("%.1f", outlier.avgDecodeTime)}ms</td>
-                            <td><strong>${String.format("%.2fx", outlier.ratio)}</strong></td>
-                        </tr>
-                        """.trimIndent()
-                    }}
-                </tbody>
-            </table>
-        </div>
-        """
-    }
-    
-    private fun buildImageDetailsSection(result: SimplifiedBenchmarkResult): String {
-        val details = result.imageDetails.takeLast(100) // Last 100 for performance
-        
-        return """
-        <div class="section">
-            <h2>📋 Image Load Details (Last 100)</h2>
-            
-            <div class="filter-controls">
-                <select id="sourceFilter" onchange="filterTable()">
+            <div class="filter-controls" style="margin-bottom: 15px;">
+                <select id="sourceFilter" onchange="filterAndSortTable()">
                     <option value="">All Sources</option>
-                    <option value="ACTIVE_CACHE">Active Cache</option>
-                    <option value="MEMORY_CACHE">Memory Cache</option>
-                    <option value="DISK_CACHE">Disk Cache</option>
-                    <option value="NETWORK">Network</option>
+                    <option value="NETWORK">Network Only</option>
+                    <option value="DISK_CACHE">Disk Cache Only</option>
                 </select>
                 
-                <select id="sizeFilter" onchange="filterTable()">
+                <select id="sizeFilter" onchange="filterAndSortTable()">
                     <option value="">All Sizes</option>
                     <option value="tiny">Tiny</option>
                     <option value="small">Small</option>
@@ -455,35 +450,60 @@ object SimplifiedHtmlReporter {
                     <option value="huge">Huge</option>
                 </select>
                 
-                <input type="text" id="urlFilter" placeholder="Filter by URL..." onkeyup="filterTable()" style="flex: 1; min-width: 200px;">
+                <select id="sortBy" onchange="filterAndSortTable()">
+                    <option value="default">Sort: Default Order</option>
+                    <option value="time-desc">Sort: Time (High → Low)</option>
+                    <option value="time-asc">Sort: Time (Low → High)</option>
+                    <option value="filesize-desc">Sort: File Size (Large → Small)</option>
+                    <option value="filesize-asc">Sort: File Size (Small → Large)</option>
+                    <option value="url">Sort: URL (A → Z)</option>
+                </select>
+                
+                <input type="text" id="urlFilter" placeholder="Search URL..." onkeyup="filterAndSortTable()" style="flex: 1; min-width: 250px;">
+                
+                <span id="filteredCount" style="margin-left: 10px; color: #666; font-weight: 600;"></span>
             </div>
             
-            <table id="detailsTable">
-                <thead>
-                    <tr>
-                        <th>URL</th>
-                        <th>Source</th>
-                        <th>Size</th>
-                        <th>Total Time</th>
-                        <th>Decode</th>
-                        <th>Transform</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${details.joinToString("") { detail ->
-                        """
-                        <tr data-source="${detail.source}" data-size="${detail.imageSize}" data-url="${detail.url}">
-                            <td class="url-cell" title="${detail.url}">${detail.url}</td>
-                            <td><span class="badge ${detail.source.lowercase().replace("_cache", "")}">${detail.source}</span></td>
-                            <td><span class="badge ${detail.imageSize}">${detail.imageSize?.uppercase() ?: "?"}</span></td>
-                            <td>${detail.totalTime}ms</td>
-                            <td>${detail.decodeTime?.let { "${it}ms" } ?: "-"}</td>
-                            <td>${detail.transformTime?.let { "${it}ms" } ?: "-"}</td>
+            <div class="table-wrapper">
+                <table id="rawDataTable">
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>URL</th>
+                            <th>Total Time</th>
+                            <th>Fetch</th>
+                            <th>Decode</th>
+                            <th>Transform</th>
+                            <th>File Size</th>
+                            <th>Image Size</th>
                         </tr>
-                        """.trimIndent()
-                    }}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        ${data.joinToString("") { item ->
+                            val fileSizeKB = item.fileSizeBytes?.let { String.format("%.1f", it / 1024.0) } ?: "N/A"
+                            val fileSizeBytes = item.fileSizeBytes ?: 0
+                            val sourceClass = if (item.source == "NETWORK") "network" else "disk"
+                            """
+                            <tr data-source="${item.source}" 
+                                data-size="${item.imageSize}" 
+                                data-url="${item.url}" 
+                                data-time="${item.totalTime}"
+                                data-filesize="$fileSizeBytes"
+                                data-index="${data.indexOf(item)}">
+                                <td><span class="badge $sourceClass">${if (item.source == "NETWORK") "NET" else "DISK"}</span></td>
+                                <td class="url-cell" title="${item.url}">${item.url}</td>
+                                <td><strong>${item.totalTime}ms</strong></td>
+                                <td>${item.fetchTime?.let { "${it}ms" } ?: "-"}</td>
+                                <td>${item.decodeTime?.let { "${it}ms" } ?: "-"}</td>
+                                <td>${item.transformTime?.let { "${it}ms" } ?: "-"}</td>
+                                <td>$fileSizeKB ${if (fileSizeBytes > 0) "KB" else ""}</td>
+                                <td><span class="badge ${item.imageSize}">${item.imageSize.uppercase()}</span></td>
+                            </tr>
+                            """.trimIndent()
+                        }}
+                    </tbody>
+                </table>
+            </div>
         </div>
         """
     }
@@ -579,24 +599,172 @@ object SimplifiedHtmlReporter {
     
     private fun buildFilterScript(): String {
         return """
-        function filterTable() {
-            const sourceFilter = document.getElementById('sourceFilter').value.toLowerCase();
-            const sizeFilter = document.getElementById('sizeFilter').value.toLowerCase();
+        let originalRowsOrder = [];
+        
+        // Store original order on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const tbody = document.querySelector('#rawDataTable tbody');
+            if (tbody) {
+                originalRowsOrder = Array.from(tbody.querySelectorAll('tr'));
+            }
+        });
+        
+        function filterAndSortTable() {
+            const sourceFilter = document.getElementById('sourceFilter').value;
+            const sizeFilter = document.getElementById('sizeFilter').value;
             const urlFilter = document.getElementById('urlFilter').value.toLowerCase();
-            const rows = document.querySelectorAll('#detailsTable tbody tr');
+            const sortBy = document.getElementById('sortBy').value;
+            const tbody = document.querySelector('#rawDataTable tbody');
             
-            rows.forEach(row => {
-                const source = row.dataset.source.toLowerCase();
-                const size = row.dataset.size.toLowerCase();
+            if (!tbody) return;
+            
+            let rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            // Filter
+            const filteredRows = rows.filter(row => {
+                const source = row.dataset.source;
+                const size = row.dataset.size;
                 const url = row.dataset.url.toLowerCase();
                 
                 const matchSource = !sourceFilter || source === sourceFilter;
                 const matchSize = !sizeFilter || size === sizeFilter;
                 const matchUrl = !urlFilter || url.includes(urlFilter);
                 
-                row.style.display = (matchSource && matchSize && matchUrl) ? '' : 'none';
+                return matchSource && matchSize && matchUrl;
             });
+            
+            // Sort
+            let sortedRows = filteredRows;
+            switch (sortBy) {
+                case 'time-desc':
+                    sortedRows = filteredRows.sort((a, b) => 
+                        parseInt(b.dataset.time) - parseInt(a.dataset.time)
+                    );
+                    break;
+                case 'time-asc':
+                    sortedRows = filteredRows.sort((a, b) => 
+                        parseInt(a.dataset.time) - parseInt(b.dataset.time)
+                    );
+                    break;
+                case 'filesize-desc':
+                    sortedRows = filteredRows.sort((a, b) => 
+                        parseInt(b.dataset.filesize) - parseInt(a.dataset.filesize)
+                    );
+                    break;
+                case 'filesize-asc':
+                    sortedRows = filteredRows.sort((a, b) => 
+                        parseInt(a.dataset.filesize) - parseInt(b.dataset.filesize)
+                    );
+                    break;
+                case 'url':
+                    sortedRows = filteredRows.sort((a, b) => 
+                        a.dataset.url.localeCompare(b.dataset.url)
+                    );
+                    break;
+                case 'default':
+                default:
+                    sortedRows = filteredRows.sort((a, b) => 
+                        parseInt(a.dataset.index) - parseInt(b.dataset.index)
+                    );
+                    break;
+            }
+            
+            // Hide all rows first
+            rows.forEach(row => row.style.display = 'none');
+            
+            // Show and reorder filtered/sorted rows
+            sortedRows.forEach(row => {
+                row.style.display = '';
+                tbody.appendChild(row);
+            });
+            
+            // Update count
+            const countEl = document.getElementById('filteredCount');
+            if (countEl) {
+                const totalCount = rows.length;
+                const visibleCount = sortedRows.length;
+                if (visibleCount === totalCount) {
+                    countEl.textContent = 'Showing all ' + totalCount + ' requests';
+                } else {
+                    countEl.textContent = 'Showing ' + visibleCount + ' of ' + totalCount + ' requests';
+                }
+            }
         }
+        
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', filterAndSortTable);
         """
     }
+    
+    private fun buildFileSizeAnalysisSection(result: SimplifiedBenchmarkResult): String {
+        val stats = result.fileSizeStats ?: return ""
+        
+        return """
+        <div class="section">
+            <h2>📦 File Size Analysis</h2>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="label">Average File Size</div>
+                    <div class="value">${String.format("%.1f", stats.avgFileSizeKB)} KB</div>
+                    <div class="percent">${String.format("%.2f", stats.avgFileSizeBytes / 1024.0 / 1024.0)} MB</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Min File Size</div>
+                    <div class="value">${String.format("%.1f", stats.minFileSizeBytes / 1024.0)} KB</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Max File Size</div>
+                    <div class="value">${String.format("%.1f", stats.maxFileSizeBytes / 1024.0)} KB</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Total Downloaded</div>
+                    <div class="value">${String.format("%.1f", stats.totalFileSizeKB / 1024.0)} MB</div>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 10px;">Average Size by Category</h3>
+            <div class="comparison-box">
+                ${stats.fileSizeByCategory.entries.joinToString("") { (category, avgSize) ->
+                    """
+                    <div class="comparison-stat">
+                        <span class="label">${category.uppercase()}</span>
+                        <span class="value">${String.format("%.1f KB", avgSize / 1024.0)}</span>
+                    </div>
+                    """.trimIndent()
+                }}
+            </div>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 10px;">Size Distribution</h3>
+            <div class="chart-container">
+                <canvas id="fileSizeDistChart"></canvas>
+            </div>
+            
+            <script>
+                new Chart(document.getElementById('fileSizeDistChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: [${stats.sizeDistribution.joinToString(", ") { "'${it.first}'" }}],
+                        datasets: [{
+                            label: 'File Count',
+                            data: [${stats.sizeDistribution.joinToString(", ") { it.second.toString() }}],
+                            backgroundColor: '#667eea'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: { display: true, text: 'File Size Distribution', font: { size: 16 } }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Count' } }
+                        }
+                    }
+                });
+            </script>
+        </div>
+        """
+    }
+    
 }

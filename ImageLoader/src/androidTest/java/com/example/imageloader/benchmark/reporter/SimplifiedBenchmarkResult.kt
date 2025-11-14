@@ -12,7 +12,8 @@ data class SimplifiedBenchmarkResult(
     val testConfig: TestConfig,
     val cacheMetrics: CacheMetrics,
     val decodeMetrics: DecodeMetrics,
-    val imageDetails: List<ImageLoadDetail>
+    val rawRequestData: List<RawRequestData>,  // NEW: All requests (Network + Disk) unified
+    val fileSizeStats: FileSizeStats?          // NEW: File size analysis
 )
 
 data class TestConfig(
@@ -86,12 +87,29 @@ data class DecodeOutlier(
     val ratio: Double // decodeTime / avgDecodeTime
 )
 
-data class ImageLoadDetail(
+/**
+ * RawRequestData - Unified data for Network and Disk requests
+ */
+data class RawRequestData(
     val url: String,
-    val source: String, // ACTIVE_CACHE, MEMORY_CACHE, DISK_CACHE, NETWORK
+    val source: String,  // "NETWORK" or "DISK_CACHE"
     val totalTime: Long,
+    val fetchTime: Long?,  // Only for network
     val decodeTime: Long?,
     val transformTime: Long?,
-    val imageSize: String?, // tiny/small/medium/large/huge
-    val timestamp: Long
+    val fileSizeBytes: Long?,
+    val imageSize: String  // tiny/small/medium/large/huge
+)
+
+/**
+ * FileSizeStats - Analysis of file sizes
+ */
+data class FileSizeStats(
+    val avgFileSizeBytes: Long,
+    val minFileSizeBytes: Long,
+    val maxFileSizeBytes: Long,
+    val avgFileSizeKB: Double,
+    val totalFileSizeKB: Double,
+    val fileSizeByCategory: Map<String, Long>,  // tiny/small/medium/large/huge → avg size
+    val sizeDistribution: List<Pair<String, Int>>  // Size ranges → count
 )
