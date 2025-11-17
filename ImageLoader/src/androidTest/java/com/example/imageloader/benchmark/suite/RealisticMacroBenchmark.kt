@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * RealisticMacroBenchmark V4.0
+ * RealisticMacroBenchmark V5.0
  *
  * Mô phỏng hành vi cuộn thực tế của người dùng khi duyệt một danh sách ảnh rất dài.
  * Bài test được chia thành bốn giai đoạn, tương ứng với các mô típ sử dụng phổ biến
@@ -26,20 +26,21 @@ import java.io.File
  * 1. Phase 1: Cuộn xuống để tải số lượng ảnh lớn lần đầu.
  *    Mục tiêu: làm nóng hệ thống, tải nhiều ảnh mới qua mạng, xây dựng bộ nhớ đệm.
  *
- * 2. Phase 2: Cuộn ngược lên để kiểm tra khả năng tái sử dụng cache.
- *    Mục tiêu: đánh giá Memory Cache, Disk Cache và Active Resources.
+ * 2. Phase 2: Cuộn nhẹ để hit Active Cache + Scroll lên để test Memory/Disk Cache.
+ *    Mục tiêu: đánh giá Active Cache (scroll nhẹ trong viewport nhỏ), Memory Cache, Disk Cache.
+ *    Active Cache chỉ hit khi ImageView được rebind với cùng URL trong khi EngineResource vẫn active.
  *
- * 3. Phase 3: Cuộn nhanh lên xuống liên tục.
- *    Mục tiêu: stress ActiveResources, tạo bind/unbind liên tục trong RecyclerView.
+ * 3. Phase 3: Tiếp tục scroll nhẹ để tối đa hóa Active Cache hits.
+ *    Mục tiêu: stress ActiveResources với scroll rất nhẹ và delay tối thiểu.
  *
  * 4. Phase 4: Cuộn sâu xuống dưới cùng, rồi lên, rồi xuống lại.
  *    Mục tiêu: mô phỏng phiên sử dụng dài, phân bổ lại bộ nhớ, kiểm tra khả năng khôi phục cache.
  *
  * Sau khi hoàn thành, hệ thống tạo báo cáo HTML và JSON với thống kê chi tiết về:
- * - Tỷ lệ cache hit theo từng tầng cache
+ * - Tỷ lệ cache hit theo từng tầng cache (Active/Memory/Disk/Network)
  * - Số lượng request
  * - Hiệu suất cache tổng hợp
- * - So sánh tốc độ Disk và Network
+ * - Phân tích file size và bandwidth
  *
  * Đây là bài test tổng hợp bao quát toàn bộ pipeline của ImageLoader,
  * từ Active Cache, Memory Cache, Disk Cache cho đến Network.
@@ -85,8 +86,9 @@ class RealisticMacroBenchmark {
     @Test
     fun testRealisticScrollBehavior() = runBlocking {
 
-        log("Bắt đầu RealisticMacroBenchmark V4.0")
+        log("Bắt đầu RealisticMacroBenchmark V5.0")
         log("Mục tiêu Phase 1: tải $targetUniqueImages ảnh unique")
+        log("Các phase được tối ưu để hit Active Cache")
 
         scenario = launchBenchmarkActivity(itemCount = 1000)
         delay(2000)
@@ -157,8 +159,30 @@ class RealisticMacroBenchmark {
     // ============================================================
 
     private suspend fun runPhase2(step: Int) {
-        logHeader("Phase 2: cuộn lên để kiểm tra cache")
+        logHeader("Phase 2: cuộn nhẹ để hit Active Cache")
 
+        // Scroll nhẹ trong viewport nhỏ để trigger rebind cùng items
+        // Điều này giúp hit Active Cache vì EngineResource vẫn còn active
+        val smallStep = step / 4  // Scroll nhẹ hơn nhiều
+        
+        log("Scroll nhẹ đi lại trong viewport nhỏ ($smallStep px) để hit Active Cache")
+        repeat(80) { i ->
+            // Scroll đi lại nhẹ nhàng
+            if (i % 2 == 0) {
+                scroll(smallStep)
+            } else {
+                scroll(-smallStep)
+            }
+            delay(150)  // Delay ngắn để views kịp bind
+            
+            if (i % 20 == 0) {
+                logCacheStats()
+            }
+        }
+
+        delay(1000)
+        log("Scroll lên để kiểm tra Memory & Disk Cache")
+        
         val scrollBackTimes = 200
         repeat(scrollBackTimes) { i ->
             scroll(-step)
@@ -176,11 +200,18 @@ class RealisticMacroBenchmark {
     // ============================================================
 
     private suspend fun runPhase3(step: Int) {
-        logHeader("Phase 3: stress ActiveResources bằng flick scroll")
+        logHeader("Phase 3: tiếp tục scroll nhẹ để tối đa hóa Active Cache hits")
 
-        repeat(60) { i ->
-            scroll(if (i % 2 == 0) step else -step)
-            delay(220)
+        val tinyStep = step / 6  // Scroll rất nhẹ
+        
+        log("Scroll rất nhẹ ($tinyStep px) với delay tối thiểu")
+        repeat(120) { i ->
+            scroll(if (i % 2 == 0) tinyStep else -tinyStep)
+            delay(100)  // Delay rất ngắn để views liên tục rebind
+            
+            if (i % 30 == 0) {
+                logCacheStats()
+            }
         }
 
         delay(1500)

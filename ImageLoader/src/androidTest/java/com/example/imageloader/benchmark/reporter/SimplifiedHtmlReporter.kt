@@ -173,6 +173,131 @@ object SimplifiedHtmlReporter {
         .badge.large { background: #ffccbc; color: #d84315; }
         .badge.huge { background: #f8bbd0; color: #c2185b; }
         
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 2% auto;
+            padding: 0;
+            border: 1px solid #888;
+            border-radius: 10px;
+            width: 95%;
+            max-width: 1400px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 25px;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+            border: none;
+            padding: 0;
+            color: white;
+        }
+        
+        .close {
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+            transition: color 0.3s;
+        }
+        
+        .close:hover,
+        .close:focus {
+            color: #ddd;
+        }
+        
+        .modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .show-requests-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .show-requests-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .show-requests-btn:active {
+            transform: translateY(0);
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        
+        .info-box h4 {
+            margin: 0 0 10px 0;
+            color: #1565c0;
+        }
+        
+        .info-box ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+        
+        .info-box li {
+            margin: 5px 0;
+            color: #424242;
+        }
+        
+        .tooltip-icon {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            background: #2196f3;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 18px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: help;
+            margin-left: 5px;
+        }
+        
         .filter-controls {
             margin-bottom: 15px;
             display: flex;
@@ -227,9 +352,10 @@ object SimplifiedHtmlReporter {
         
         ${buildOverviewSection(result)}
         ${buildCacheHitsSection(result)}
-        ${buildDecodeComparisonSection(result)}
+        ${buildDecodePerformanceSection(result)}
         ${buildFileSizeAnalysisSection(result)}
-        ${buildUnifiedRawDataSection(result)}
+        ${buildAllRequestsButton()}
+        ${buildAllRequestsModal(result)}
     </div>
     
     <script>
@@ -284,18 +410,32 @@ object SimplifiedHtmlReporter {
     
     private fun buildCacheHitsSection(result: SimplifiedBenchmarkResult): String {
         val cache = result.cacheMetrics
+        val hasActiveCache = cache.activeCacheHits > 0
         
         return """
         <div class="section">
-            <h2>🎯 Cache Hit Distribution</h2>
+            <h2>🎯 Cache Hit Distribution <span class="tooltip-icon" title="Phân bố cache hits cho thấy hiệu quả của hệ thống cache">?</span></h2>
+            
+            <div class="info-box">
+                <h4>📖 Giải thích các chỉ số:</h4>
+                <ul>
+                    ${if (hasActiveCache) "<li><strong>Active Cache</strong>: Ảnh đang hiển thị trên màn hình (tốc độ nhanh nhất, ~0-2ms)</li>" else ""}
+                    <li><strong>Memory Cache</strong>: Ảnh đã load gần đây trong RAM (nhanh, ~1-5ms)</li>
+                    <li><strong>Disk Cache</strong>: Ảnh được lưu trên ổ cứng (trung bình, ~20-100ms)</li>
+                    <li><strong>Network</strong>: Tải ảnh từ internet (chậm nhất, ~100-1000ms)</li>
+                    <li><strong>Cache Efficiency</strong>: Tỉ lệ % request không cần tải từ network (càng cao càng tốt)</li>
+                </ul>
+            </div>
             
             <div class="stats-grid">
+                ${if (hasActiveCache) """
                 <div class="stat-card active">
                     <div class="label">Active Cache</div>
                     <div class="value">${cache.activeCacheHits}</div>
                     <div class="percent">${String.format("%.1f%%", cache.activeCachePercent)}</div>
                     <div class="label" style="margin-top: 10px;">${String.format("%.0fms avg", cache.avgActiveCacheTime)}</div>
                 </div>
+                """.trimIndent() else ""}
                 <div class="stat-card memory">
                     <div class="label">Memory Cache</div>
                     <div class="value">${cache.memoryCacheHits}</div>
@@ -323,104 +463,110 @@ object SimplifiedHtmlReporter {
         """
     }
     
-    private fun buildDecodeComparisonSection(result: SimplifiedBenchmarkResult): String {
+    private fun buildDecodePerformanceSection(result: SimplifiedBenchmarkResult): String {
         val decode = result.decodeMetrics
         
         return """
         <div class="section">
-            <h2>⚡ Decode Performance: Network vs Disk Cache</h2>
+            <h2>⚡ Decode Performance Analysis <span class="tooltip-icon" title="Phân tích hiệu suất decode giữa Network và Disk Cache">?</span></h2>
             
-            <div class="comparison-box">
-                <h3>Performance Comparison</h3>
-                <div class="comparison-stat">
-                    <span class="label">Disk vs Network Speedup</span>
-                    <span class="value">${String.format("%.2fx faster", decode.diskVsNetworkSpeedup)}</span>
-                </div>
-                <div class="comparison-stat">
-                    <span class="label">Network Avg Decode</span>
-                    <span class="value">${String.format("%.1fms", decode.networkAvgDecodeTime)}</span>
-                </div>
-                <div class="comparison-stat">
-                    <span class="label">Disk Avg Decode</span>
-                    <span class="value">${String.format("%.1fms", decode.diskAvgDecodeTime)}</span>
-                </div>
+            <div class="info-box">
+                <h4>📖 Giải thích các chỉ số Percentile:</h4>
+                <ul>
+                    <li><strong>Min (Minimum)</strong>: Thời gian nhanh nhất - trường hợp tốt nhất</li>
+                    <li><strong>P50 (Median/Trung vị)</strong>: 50% requests nhanh hơn giá trị này - đại diện cho trải nghiệm điển hình</li>
+                    <li><strong>P95 (Percentile 95)</strong>: 95% requests nhanh hơn giá trị này - gần như hầu hết người dùng</li>
+                    <li><strong>P99 (Percentile 99)</strong>: 99% requests nhanh hơn giá trị này - kể cả các trường hợp xấu</li>
+                    <li><strong>Max (Maximum)</strong>: Thời gian chậm nhất - trường hợp xấu nhất</li>
+                    <li><strong>Tại sao không dùng Average?</strong> Vì average dễ bị ảnh hưởng bởi outliers (giá trị bất thường). P50/P95/P99 cho thấy trải nghiệm thực tế chính xác hơn.</li>
+                </ul>
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
                 <div>
-                    <h3 style="margin-bottom: 15px;">Network Decode Stats</h3>
+                    <h3 style="margin-bottom: 15px;">📡 Network Decode Stats</h3>
                     <div class="comparison-box">
                         <div class="comparison-stat">
-                            <span class="label">Count</span>
-                            <span class="value">${decode.networkDecodeCount}</span>
+                            <span class="label">Số lượng</span>
+                            <span class="value">${decode.networkDecodeCount} lần</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">Min</span>
+                            <span class="label">Min (Nhanh nhất)</span>
                             <span class="value">${decode.networkMinDecodeTime}ms</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">P50</span>
+                            <span class="label">P50 (50% nhanh hơn)</span>
                             <span class="value">${decode.networkDecodeP50}ms</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">P95</span>
+                            <span class="label">P95 (95% nhanh hơn)</span>
                             <span class="value">${decode.networkDecodeP95}ms</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">P99</span>
+                            <span class="label">P99 (99% nhanh hơn)</span>
                             <span class="value">${decode.networkDecodeP99}ms</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">Max</span>
+                            <span class="label">Max (Chậm nhất)</span>
                             <span class="value">${decode.networkMaxDecodeTime}ms</span>
                         </div>
                     </div>
                 </div>
                 
                 <div>
-                    <h3 style="margin-bottom: 15px;">Disk Cache Decode Stats</h3>
+                    <h3 style="margin-bottom: 15px;">💾 Disk Cache Decode Stats</h3>
                     <div class="comparison-box">
                         <div class="comparison-stat">
-                            <span class="label">Count</span>
-                            <span class="value">${decode.diskDecodeCount}</span>
+                            <span class="label">Số lượng</span>
+                            <span class="value">${decode.diskDecodeCount} lần</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">Min</span>
+                            <span class="label">Min (Nhanh nhất)</span>
                             <span class="value">${decode.diskMinDecodeTime}ms</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">P50</span>
+                            <span class="label">P50 (50% nhanh hơn)</span>
                             <span class="value">${decode.diskDecodeP50}ms</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">P95</span>
+                            <span class="label">P95 (95% nhanh hơn)</span>
                             <span class="value">${decode.diskDecodeP95}ms</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">P99</span>
+                            <span class="label">P99 (99% nhanh hơn)</span>
                             <span class="value">${decode.diskDecodeP99}ms</span>
                         </div>
                         <div class="comparison-stat">
-                            <span class="label">Max</span>
+                            <span class="label">Max (Chậm nhất)</span>
                             <span class="value">${decode.diskMaxDecodeTime}ms</span>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <div class="chart-container" style="margin-top: 20px;">
-                <canvas id="decodeComparisonChart"></canvas>
-            </div>
-            
-            <h3 style="margin-top: 30px; margin-bottom: 15px;">Decode Time by Image Size</h3>
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">📊 So sánh P95 và P99</h3>
+            <p style="color: #666; margin-bottom: 15px;">
+                Biểu đồ này cho thấy thời gian decode ở percentile 95 và 99 - đại diện cho trải nghiệm của hầu hết người dùng.
+                <strong>Lưu ý:</strong> Không so sánh Average vì nó không phản ánh chính xác trải nghiệm thực tế.
+            </p>
             <div class="chart-container">
-                <canvas id="decodeBySizeChart"></canvas>
+                <canvas id="decodeComparisonChart"></canvas>
             </div>
         </div>
         """
     }
     
-    private fun buildUnifiedRawDataSection(result: SimplifiedBenchmarkResult): String {
+    private fun buildAllRequestsButton(): String {
+        return """
+        <div class="section" style="text-align: center;">
+            <button class="show-requests-btn" onclick="document.getElementById('allRequestsModal').style.display='block'">
+                📋 Xem Chi Tiết Tất Cả Requests
+            </button>
+        </div>
+        """
+    }
+    
+    private fun buildAllRequestsModal(result: SimplifiedBenchmarkResult): String {
         val data = result.rawRequestData
         if (data.isEmpty()) return ""
         
@@ -428,11 +574,28 @@ object SimplifiedHtmlReporter {
         val diskCount = data.count { it.source == "DISK_CACHE" }
         
         return """
-        <div class="section">
-            <h2>📊 All Requests - Raw Data</h2>
-            <p style="color: #666; margin-bottom: 15px;">
-                Total: ${data.size} requests | Network: $networkCount | Disk Cache: $diskCount
-            </p>
+        <div id="allRequestsModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📊 Chi Tiết Tất Cả Requests</h2>
+                    <span class="close" onclick="document.getElementById('allRequestsModal').style.display='none'">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="info-box">
+                        <h4>📖 Giải thích các chỉ số thời gian:</h4>
+                        <ul>
+                            <li><strong>Total Time</strong>: Tổng thời gian hoàn thành request từ đầu đến cuối</li>
+                            <li><strong>Fetch</strong>: Thời gian tải dữ liệu (từ network hoặc disk)</li>
+                            <li><strong>Decode</strong>: Thời gian giải mã ảnh thành bitmap</li>
+                            <li><strong>Transform</strong>: Thời gian xử lý ảnh (resize, crop, rounded corners...)</li>
+                            <li><strong>File Size</strong>: Kích thước file ảnh thực tế (KB)</li>
+                            <li><strong>Image Size</strong>: Phân loại ảnh (tiny &lt; 100KB, small 100-500KB, medium 500KB-1MB, large 1-2MB, huge &gt; 2MB)</li>
+                        </ul>
+                    </div>
+                    
+                    <p style="color: #666; margin-bottom: 15px;">
+                        <strong>Tổng cộng:</strong> ${data.size} requests | <strong>Network:</strong> $networkCount | <strong>Disk Cache:</strong> $diskCount
+                    </p>
             
             <div class="filter-controls" style="margin-bottom: 15px;">
                 <select id="sourceFilter" onchange="filterAndSortTable()">
@@ -504,24 +667,58 @@ object SimplifiedHtmlReporter {
                     </tbody>
                 </table>
             </div>
+                </div>
+            </div>
         </div>
+        
+        <script>
+            // Close modal when clicking outside
+            window.onclick = function(event) {
+                const modal = document.getElementById('allRequestsModal');
+                if (event.target == modal) {
+                    modal.style.display = 'none';
+                }
+            }
+        </script>
         """
     }
     
     private fun buildChartsScript(result: SimplifiedBenchmarkResult): String {
         val cache = result.cacheMetrics
         val decode = result.decodeMetrics
+        val hasActiveCache = cache.activeCacheHits > 0
+        
+        val labels = buildList {
+            if (hasActiveCache) add("'Active Cache'")
+            add("'Memory Cache'")
+            add("'Disk Cache'")
+            add("'Network'")
+        }.joinToString(", ")
+        
+        val data = buildList {
+            if (hasActiveCache) add(cache.activeCacheHits)
+            add(cache.memoryCacheHits)
+            add(cache.diskCacheHits)
+            add(cache.networkLoads)
+        }.joinToString(", ")
+        
+        val colors = buildList {
+            if (hasActiveCache) add("'#4caf50'")
+            add("'#2196f3'")
+            add("'#ff9800'")
+            add("'#f44336'")
+        }.joinToString(", ")
         
         return """
         // Cache Hits Chart
         new Chart(document.getElementById('cacheHitsChart'), {
             type: 'bar',
             data: {
-                labels: ['Active Cache', 'Memory Cache', 'Disk Cache', 'Network'],
+                labels: [$labels],
                 datasets: [{
                     label: 'Hit Count',
-                    data: [${cache.activeCacheHits}, ${cache.memoryCacheHits}, ${cache.diskCacheHits}, ${cache.networkLoads}],
-                    backgroundColor: ['#4caf50', '#2196f3', '#ff9800', '#f44336']
+                    data: [$data],
+                    backgroundColor: [$colors]
                 }]
             },
             options: {
@@ -537,24 +734,24 @@ object SimplifiedHtmlReporter {
             }
         });
         
-        // Decode Comparison Chart
+        // Decode Comparison Chart (P95 and P99 only)
         new Chart(document.getElementById('decodeComparisonChart'), {
             type: 'bar',
             data: {
                 labels: ['Network', 'Disk Cache'],
                 datasets: [
                     {
-                        label: 'Average',
-                        data: [${decode.networkAvgDecodeTime}, ${decode.diskAvgDecodeTime}],
+                        label: 'P50 (Median)',
+                        data: [${decode.networkDecodeP50}, ${decode.diskDecodeP50}],
                         backgroundColor: '#2196f3'
                     },
                     {
-                        label: 'P95',
+                        label: 'P95 (95% người dùng)',
                         data: [${decode.networkDecodeP95}, ${decode.diskDecodeP95}],
                         backgroundColor: '#ff9800'
                     },
                     {
-                        label: 'P99',
+                        label: 'P99 (99% người dùng)',
                         data: [${decode.networkDecodeP99}, ${decode.diskDecodeP99}],
                         backgroundColor: '#f44336'
                     }
@@ -564,33 +761,21 @@ object SimplifiedHtmlReporter {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    title: { display: true, text: 'Decode Time Comparison (ms)', font: { size: 16 } }
+                    title: { 
+                        display: true, 
+                        text: 'So sánh Decode Time: Network vs Disk Cache (ms)', 
+                        font: { size: 16 } 
+                    },
+                    legend: {
+                        display: true,
+                        position: 'bottom'
+                    }
                 },
                 scales: {
-                    y: { beginAtZero: true, title: { display: true, text: 'Time (ms)' } }
-                }
-            }
-        });
-        
-        // Decode by Size Chart
-        new Chart(document.getElementById('decodeBySizeChart'), {
-            type: 'bar',
-            data: {
-                labels: ['Tiny', 'Small', 'Medium', 'Large', 'Huge'],
-                datasets: [{
-                    label: 'Average Decode Time (ms)',
-                    data: [${decode.decodeTinyAvg}, ${decode.decodeSmallAvg}, ${decode.decodeMediumAvg}, ${decode.decodeLargeAvg}, ${decode.decodeHugeAvg}],
-                    backgroundColor: ['#9c27b0', '#3f51b5', '#009688', '#ff5722', '#e91e63']
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: { display: true, text: 'Decode Time by Image Size', font: { size: 16 } }
-                },
-                scales: {
-                    y: { beginAtZero: true, title: { display: true, text: 'Time (ms)' } }
+                    y: { 
+                        beginAtZero: true, 
+                        title: { display: true, text: 'Thời gian (ms)' } 
+                    }
                 }
             }
         });
@@ -701,7 +886,17 @@ object SimplifiedHtmlReporter {
         
         return """
         <div class="section">
-            <h2>📦 File Size Analysis</h2>
+            <h2>📦 File Size Analysis <span class="tooltip-icon" title="Phân tích kích thước file để đánh giá bandwidth sử dụng">?</span></h2>
+            
+            <div class="info-box">
+                <h4>📖 Ý nghĩa của File Size Analysis:</h4>
+                <ul>
+                    <li><strong>Average File Size</strong>: Kích thước trung bình của mỗi ảnh - giúp ước tính bandwidth cần thiết</li>
+                    <li><strong>Total Downloaded</strong>: Tổng dung lượng đã tải - quan trọng để tính data usage</li>
+                    <li><strong>Size Distribution</strong>: Phân bố kích thước file - giúp tối ưu cache size</li>
+                    <li><strong>Lưu ý</strong>: File size nhỏ hơn thì tốc độ tải nhanh hơn, nhưng chất lượng ảnh có thể thấp hơn</li>
+                </ul>
+            </div>
             
             <div class="stats-grid">
                 <div class="stat-card">
