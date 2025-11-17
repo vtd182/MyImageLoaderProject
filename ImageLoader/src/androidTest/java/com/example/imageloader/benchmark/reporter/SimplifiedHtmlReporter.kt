@@ -298,6 +298,150 @@ object SimplifiedHtmlReporter {
             margin-left: 5px;
         }
         
+        .decode-controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .filter-btn {
+            padding: 8px 16px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .filter-btn:hover {
+            background: #f0f0f0;
+        }
+        
+        .filter-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .comparison-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-left: 20px;
+            border-left: 2px solid #ddd;
+        }
+        
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: #667eea;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        
+        .stats-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stats-comparison.single {
+            grid-template-columns: 1fr;
+        }
+        
+        .stats-box {
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .stats-box.network {
+            border-color: #f44336;
+        }
+        
+        .stats-box.disk {
+            border-color: #ff9800;
+        }
+        
+        .stats-box h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+        }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .stat-value {
+            font-weight: 700;
+            color: #333;
+        }
+        
         .filter-controls {
             margin-bottom: 15px;
             display: flex;
@@ -360,6 +504,7 @@ object SimplifiedHtmlReporter {
     
     <script>
         ${buildChartsScript(result)}
+        ${buildDecodeFilterScript()}
         ${buildFilterScript()}
     </script>
 </body>
@@ -482,73 +627,115 @@ object SimplifiedHtmlReporter {
                 </ul>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
-                <div>
-                    <h3 style="margin-bottom: 15px;">📡 Network Decode Stats</h3>
-                    <div class="comparison-box">
-                        <div class="comparison-stat">
-                            <span class="label">Số lượng</span>
-                            <span class="value">${decode.networkDecodeCount} lần</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">Min (Nhanh nhất)</span>
-                            <span class="value">${decode.networkMinDecodeTime}ms</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">P50 (50% nhanh hơn)</span>
-                            <span class="value">${decode.networkDecodeP50}ms</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">P95 (95% nhanh hơn)</span>
-                            <span class="value">${decode.networkDecodeP95}ms</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">P99 (99% nhanh hơn)</span>
-                            <span class="value">${decode.networkDecodeP99}ms</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">Max (Chậm nhất)</span>
-                            <span class="value">${decode.networkMaxDecodeTime}ms</span>
-                        </div>
+            <div class="decode-controls">
+                <div class="filter-group">
+                    <span style="font-weight: 600; color: #333;">Hiển thị:</span>
+                    <button class="filter-btn active" data-filter="all" onclick="filterDecodeData('all')">📊 Tất cả</button>
+                    <button class="filter-btn" data-filter="network" onclick="filterDecodeData('network')">📡 Network</button>
+                    <button class="filter-btn" data-filter="disk" onclick="filterDecodeData('disk')">💾 Disk Cache</button>
+                </div>
+                
+                <div class="comparison-toggle">
+                    <span style="font-weight: 600; color: #333;">So sánh:</span>
+                    <label class="switch">
+                        <input type="checkbox" id="comparisonToggle" onchange="toggleComparison()">
+                        <span class="slider"></span>
+                    </label>
+                    <span id="comparisonLabel" style="color: #666;">Tắt</span>
+                </div>
+            </div>
+            
+            <!-- Stats boxes - dynamically updated by JavaScript -->
+            <div id="statsContainer" class="stats-comparison">
+                <!-- ALL stats box -->
+                <div class="stats-box" id="allStats" style="border-color: #667eea;">
+                    <h3>📊 Tất cả (Network + Disk)</h3>
+                    <div class="stat-row">
+                        <span class="stat-label">Số lượng</span>
+                        <span class="stat-value">${decode.allDecodeCount} lần</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Min (Nhanh nhất)</span>
+                        <span class="stat-value">${decode.allMinDecodeTime}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P50 (Trải nghiệm điển hình)</span>
+                        <span class="stat-value">${decode.allDecodeP50}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P95 (95% người dùng)</span>
+                        <span class="stat-value">${decode.allDecodeP95}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P99 (99% người dùng)</span>
+                        <span class="stat-value">${decode.allDecodeP99}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Max (Chậm nhất)</span>
+                        <span class="stat-value">${decode.allMaxDecodeTime}ms</span>
                     </div>
                 </div>
                 
-                <div>
-                    <h3 style="margin-bottom: 15px;">💾 Disk Cache Decode Stats</h3>
-                    <div class="comparison-box">
-                        <div class="comparison-stat">
-                            <span class="label">Số lượng</span>
-                            <span class="value">${decode.diskDecodeCount} lần</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">Min (Nhanh nhất)</span>
-                            <span class="value">${decode.diskMinDecodeTime}ms</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">P50 (50% nhanh hơn)</span>
-                            <span class="value">${decode.diskDecodeP50}ms</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">P95 (95% nhanh hơn)</span>
-                            <span class="value">${decode.diskDecodeP95}ms</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">P99 (99% nhanh hơn)</span>
-                            <span class="value">${decode.diskDecodeP99}ms</span>
-                        </div>
-                        <div class="comparison-stat">
-                            <span class="label">Max (Chậm nhất)</span>
-                            <span class="value">${decode.diskMaxDecodeTime}ms</span>
-                        </div>
+                <!-- Network stats box -->
+                <div class="stats-box network" id="networkStats" style="display: none;">
+                    <h3>📡 Network Decode</h3>
+                    <div class="stat-row">
+                        <span class="stat-label">Số lượng</span>
+                        <span class="stat-value">${decode.networkDecodeCount} lần</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Min (Nhanh nhất)</span>
+                        <span class="stat-value">${decode.networkMinDecodeTime}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P50 (Trải nghiệm điển hình)</span>
+                        <span class="stat-value">${decode.networkDecodeP50}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P95 (95% người dùng)</span>
+                        <span class="stat-value">${decode.networkDecodeP95}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P99 (99% người dùng)</span>
+                        <span class="stat-value">${decode.networkDecodeP99}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Max (Chậm nhất)</span>
+                        <span class="stat-value">${decode.networkMaxDecodeTime}ms</span>
+                    </div>
+                </div>
+                
+                <!-- Disk stats box -->
+                <div class="stats-box disk" id="diskStats" style="display: none;">
+                    <h3>💾 Disk Cache Decode</h3>
+                    <div class="stat-row">
+                        <span class="stat-label">Số lượng</span>
+                        <span class="stat-value">${decode.diskDecodeCount} lần</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Min (Nhanh nhất)</span>
+                        <span class="stat-value">${decode.diskMinDecodeTime}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P50 (Trải nghiệm điển hình)</span>
+                        <span class="stat-value">${decode.diskDecodeP50}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P95 (95% người dùng)</span>
+                        <span class="stat-value">${decode.diskDecodeP95}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">P99 (99% người dùng)</span>
+                        <span class="stat-value">${decode.diskDecodeP99}ms</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Max (Chậm nhất)</span>
+                        <span class="stat-value">${decode.diskMaxDecodeTime}ms</span>
                     </div>
                 </div>
             </div>
             
-            <h3 style="margin-top: 30px; margin-bottom: 15px;">📊 So sánh P95 và P99</h3>
-            <p style="color: #666; margin-bottom: 15px;">
-                Biểu đồ này cho thấy thời gian decode ở percentile 95 và 99 - đại diện cho trải nghiệm của hầu hết người dùng.
-                <strong>Lưu ý:</strong> Không so sánh Average vì nó không phản ánh chính xác trải nghiệm thực tế.
-            </p>
+            <!-- Chart container -->
             <div class="chart-container">
                 <canvas id="decodeComparisonChart"></canvas>
             </div>
@@ -688,6 +875,37 @@ object SimplifiedHtmlReporter {
         val decode = result.decodeMetrics
         val hasActiveCache = cache.activeCacheHits > 0
         
+        // Inject decode data for JavaScript
+        val decodeDataScript = """
+        // Decode data for dynamic charts
+        window.decodeData = {
+            all: {
+                count: ${decode.allDecodeCount},
+                min: ${decode.allMinDecodeTime},
+                p50: ${decode.allDecodeP50},
+                p95: ${decode.allDecodeP95},
+                p99: ${decode.allDecodeP99},
+                max: ${decode.allMaxDecodeTime}
+            },
+            network: {
+                count: ${decode.networkDecodeCount},
+                min: ${decode.networkMinDecodeTime},
+                p50: ${decode.networkDecodeP50},
+                p95: ${decode.networkDecodeP95},
+                p99: ${decode.networkDecodeP99},
+                max: ${decode.networkMaxDecodeTime}
+            },
+            disk: {
+                count: ${decode.diskDecodeCount},
+                min: ${decode.diskMinDecodeTime},
+                p50: ${decode.diskDecodeP50},
+                p95: ${decode.diskDecodeP95},
+                p99: ${decode.diskDecodeP99},
+                max: ${decode.diskMaxDecodeTime}
+            }
+        };
+        """
+        
         val labels = buildList {
             if (hasActiveCache) add("'Active Cache'")
             add("'Memory Cache'")
@@ -710,6 +928,8 @@ object SimplifiedHtmlReporter {
         }.joinToString(", ")
         
         return """
+        $decodeDataScript
+        
         // Cache Hits Chart
         new Chart(document.getElementById('cacheHitsChart'), {
             type: 'bar',
@@ -733,51 +953,170 @@ object SimplifiedHtmlReporter {
                 }
             }
         });
+        """
+    }
+    
+    private fun buildDecodeFilterScript(): String {
+        return """
+        // Decode Performance Filter & Comparison Logic
+        let currentFilter = 'all';
+        let comparisonMode = false;
+        let decodeChart = null;
         
-        // Decode Comparison Chart (P95 and P99 only)
-        new Chart(document.getElementById('decodeComparisonChart'), {
-            type: 'bar',
-            data: {
-                labels: ['Network', 'Disk Cache'],
-                datasets: [
+        function filterDecodeData(filter) {
+            currentFilter = filter;
+            
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update stats visibility
+            const statsContainer = document.getElementById('statsContainer');
+            const allStats = document.getElementById('allStats');
+            const networkStats = document.getElementById('networkStats');
+            const diskStats = document.getElementById('diskStats');
+            
+            // Always use single column layout for stats
+            statsContainer.classList.add('single');
+            
+            // Show appropriate stats box based on filter
+            if (filter === 'all') {
+                allStats.style.display = 'block';
+                networkStats.style.display = 'none';
+                diskStats.style.display = 'none';
+            } else if (filter === 'network') {
+                allStats.style.display = 'none';
+                networkStats.style.display = 'block';
+                diskStats.style.display = 'none';
+            } else if (filter === 'disk') {
+                allStats.style.display = 'none';
+                networkStats.style.display = 'none';
+                diskStats.style.display = 'block';
+            }
+            
+            // Update chart
+            updateDecodeChart();
+        }
+        
+        function toggleComparison() {
+            const toggle = document.getElementById('comparisonToggle');
+            const label = document.getElementById('comparisonLabel');
+            comparisonMode = toggle.checked;
+            
+            label.textContent = comparisonMode ? 'Bật' : 'Tắt';
+            label.style.color = comparisonMode ? '#667eea' : '#666';
+            
+            updateDecodeChart();
+        }
+        
+        function updateDecodeChart() {
+            if (decodeChart) {
+                decodeChart.destroy();
+            }
+            
+            const ctx = document.getElementById('decodeComparisonChart').getContext('2d');
+            
+            // Get data from script vars (set by Kotlin)
+            const allData = window.decodeData.all;
+            const networkData = window.decodeData.network;
+            const diskData = window.decodeData.disk;
+            
+            let datasets = [];
+            let labels = [];
+            let chartTitle = '';
+            
+            if (comparisonMode) {
+                // Comparison mode: Grouped bars (cột đôi) Network vs Disk
+                labels = ['P50', 'P95', 'P99'];
+                datasets = [
                     {
-                        label: 'P50 (Median)',
-                        data: [${decode.networkDecodeP50}, ${decode.diskDecodeP50}],
-                        backgroundColor: '#2196f3'
-                    },
-                    {
-                        label: 'P95 (95% người dùng)',
-                        data: [${decode.networkDecodeP95}, ${decode.diskDecodeP95}],
-                        backgroundColor: '#ff9800'
-                    },
-                    {
-                        label: 'P99 (99% người dùng)',
-                        data: [${decode.networkDecodeP99}, ${decode.diskDecodeP99}],
+                        label: '📡 Network',
+                        data: [networkData.p50, networkData.p95, networkData.p99],
                         backgroundColor: '#f44336'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: { 
-                        display: true, 
-                        text: 'So sánh Decode Time: Network vs Disk Cache (ms)', 
-                        font: { size: 16 } 
                     },
-                    legend: {
-                        display: true,
-                        position: 'bottom'
+                    {
+                        label: '💾 Disk Cache',
+                        data: [diskData.p50, diskData.p95, diskData.p99],
+                        backgroundColor: '#ff9800'
                     }
-                },
-                scales: {
-                    y: { 
-                        beginAtZero: true, 
-                        title: { display: true, text: 'Thời gian (ms)' } 
-                    }
+                ];
+                chartTitle = 'So sánh Network vs Disk Cache (Grouped Bars)';
+            } else {
+                // Normal mode: Single source based on filter
+                if (currentFilter === 'all') {
+                    // ALL mode: Show combined data
+                    labels = ['Min', 'P50', 'P95', 'P99', 'Max'];
+                    datasets = [{
+                        label: 'All Decode Time (ms)',
+                        data: [allData.min, allData.p50, allData.p95, allData.p99, allData.max],
+                        backgroundColor: ['#4caf50', '#2196f3', '#ff9800', '#f44336', '#9c27b0']
+                    }];
+                    chartTitle = 'Tất cả Decode Time Distribution (' + allData.count + ' samples)';
+                } else if (currentFilter === 'network') {
+                    // Network mode: Show network data only
+                    labels = ['Min', 'P50', 'P95', 'P99', 'Max'];
+                    datasets = [{
+                        label: 'Network Decode Time (ms)',
+                        data: [networkData.min, networkData.p50, networkData.p95, networkData.p99, networkData.max],
+                        backgroundColor: ['#4caf50', '#2196f3', '#ff9800', '#f44336', '#9c27b0']
+                    }];
+                    chartTitle = 'Network Decode Distribution (' + networkData.count + ' samples)';
+                } else if (currentFilter === 'disk') {
+                    // Disk mode: Show disk data only
+                    labels = ['Min', 'P50', 'P95', 'P99', 'Max'];
+                    datasets = [{
+                        label: 'Disk Cache Decode Time (ms)',
+                        data: [diskData.min, diskData.p50, diskData.p95, diskData.p99, diskData.max],
+                        backgroundColor: ['#4caf50', '#2196f3', '#ff9800', '#f44336', '#9c27b0']
+                    }];
+                    chartTitle = 'Disk Cache Decode Distribution (' + diskData.count + ' samples)';
                 }
             }
+            
+            decodeChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: chartTitle,
+                            font: { size: 16 }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'bottom'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: comparisonMode ? 'Percentile' : 'Distribution'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Thời gian (ms)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            updateDecodeChart();
         });
         """
     }

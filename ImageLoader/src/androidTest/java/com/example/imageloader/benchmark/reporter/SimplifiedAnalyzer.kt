@@ -118,9 +118,13 @@ object SimplifiedAnalyzer {
             it.source == LogSource.DISK_CACHE && it.decodeTimeMs != null 
         }.mapNotNull { it.decodeTimeMs }
         
+        // Combined decode times (ALL mode - merge network + disk)
+        val allDecodes = networkDecodes + diskDecodes
+        
         // Percentiles
         val networkSorted = networkDecodes.sorted()
         val diskSorted = diskDecodes.sorted()
+        val allSorted = allDecodes.sorted()
         
         fun percentile(list: List<Long>, p: Double): Long {
             if (list.isEmpty()) return 0
@@ -169,6 +173,14 @@ object SimplifiedAnalyzer {
         }
         
         return DecodeMetrics(
+            // Combined stats (ALL mode)
+            allDecodeCount = allDecodes.size,
+            allMinDecodeTime = allSorted.firstOrNull() ?: 0,
+            allMaxDecodeTime = allSorted.lastOrNull() ?: 0,
+            allDecodeP50 = percentile(allSorted, 0.50),
+            allDecodeP95 = percentile(allSorted, 0.95),
+            allDecodeP99 = percentile(allSorted, 0.99),
+            
             networkDecodeCount = networkDecodes.size,
             networkAvgDecodeTime = networkAvg,
             networkMinDecodeTime = networkSorted.firstOrNull() ?: 0,

@@ -49,6 +49,14 @@ data class CacheMetrics(
 )
 
 data class DecodeMetrics(
+    // Combined/ALL decode stats (Network + Disk merged)
+    val allDecodeCount: Int,
+    val allMinDecodeTime: Long,
+    val allMaxDecodeTime: Long,
+    val allDecodeP50: Long,
+    val allDecodeP95: Long,
+    val allDecodeP99: Long,
+    
     // Network decode stats
     val networkDecodeCount: Int,
     val networkAvgDecodeTime: Double,
