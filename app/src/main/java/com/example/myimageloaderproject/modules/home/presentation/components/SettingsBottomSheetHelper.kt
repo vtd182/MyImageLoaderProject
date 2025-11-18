@@ -12,7 +12,7 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 class SettingsBottomSheetHelper(
     private val context: Context
 ) {
-    
+
     fun show(
         currentSpanCount: Int,
         isCornerEnabled: Boolean,
@@ -26,20 +26,25 @@ class SettingsBottomSheetHelper(
             false
         )
         bottomSheetDialog.setContentView(view)
-        
+
         val switchCorner = view.findViewById<SwitchMaterial>(R.id.switchCorner)
         val chipGroup = view.findViewById<ChipGroup>(R.id.chipGroupColumns)
         val btnClose = view.findViewById<Button>(R.id.btnClose)
-        
+
         switchCorner.isChecked = isCornerEnabled
         when (currentSpanCount) {
             1 -> chipGroup.check(R.id.chip1Column)
             2 -> chipGroup.check(R.id.chip2Columns)
             3 -> chipGroup.check(R.id.chip3Columns)
         }
-        
+
         switchCorner.setOnCheckedChangeListener { _, isChecked ->
+            bottomSheetDialog.dismiss()
+
+            // Apply corner toggle
             onCornerToggled(isChecked)
+
+            // Show toast confirmation
             val msg = if (isChecked) {
                 context.getString(R.string.corner_enabled)
             } else {
@@ -47,7 +52,7 @@ class SettingsBottomSheetHelper(
             }
             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
-        
+
         chipGroup.setOnCheckedStateChangeListener { _, checkedIds ->
             val newSpanCount = when (checkedIds.firstOrNull()) {
                 R.id.chip1Column -> 1
@@ -55,9 +60,14 @@ class SettingsBottomSheetHelper(
                 R.id.chip3Columns -> 3
                 else -> currentSpanCount
             }
-            
+
             if (newSpanCount != currentSpanCount) {
+                bottomSheetDialog.dismiss()
+
+                // Apply span count change
                 onSpanCountChanged(newSpanCount)
+
+                // Show toast confirmation
                 Toast.makeText(
                     context,
                     context.getString(R.string.columns_changed, newSpanCount),
@@ -65,11 +75,11 @@ class SettingsBottomSheetHelper(
                 ).show()
             }
         }
-        
+
         btnClose.setOnClickListener {
             bottomSheetDialog.dismiss()
         }
-        
+
         bottomSheetDialog.show()
     }
 }
