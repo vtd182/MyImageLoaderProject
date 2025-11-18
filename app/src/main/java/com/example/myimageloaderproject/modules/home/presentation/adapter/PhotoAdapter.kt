@@ -20,6 +20,7 @@ import com.example.imageloader.core.RequestManager
 import com.example.imageloader.core.enums.RequestPriority
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.myimageloaderproject.R
+import com.example.myimageloaderproject.core.helpers.PermissionHelper
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +32,8 @@ import java.io.FileOutputStream
 import java.net.URL
 
 class PhotoAdapter(
-    private val spanProvider: () -> Int
+    private val spanProvider: () -> Int,
+    private val onRequestStoragePermission: (onGranted: () -> Unit) -> Unit
 ) : ListAdapter<UnsplashPhoto, PhotoAdapter.PhotoViewHolder>(DiffCallback) {
 
     private var cornerEnabled = false
@@ -98,15 +100,29 @@ class PhotoAdapter(
 
             btnDownload.setOnClickListener {
                 dialog.dismiss()
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.downloading_image),
-                    Toast.LENGTH_SHORT
-                ).show()
-                downloadImage(
-                    photo.urls.full ?: photo.urls.small ?: return@setOnClickListener,
-                    context
-                )
+                val url = photo.urls.full ?: photo.urls.small ?: return@setOnClickListener
+
+                // Check permission
+                if (PermissionHelper.hasStoragePermission(context)) {
+                    // Có quyền → download ngay
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.downloading_image),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    downloadImage(url, context)
+                } else {
+                    // Chưa có quyền → request
+                    onRequestStoragePermission {
+                        // Callback sau khi granted
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.downloading_image),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        downloadImage(url, context)
+                    }
+                }
             }
 
             btnCancel.setOnClickListener { dialog.dismiss() }

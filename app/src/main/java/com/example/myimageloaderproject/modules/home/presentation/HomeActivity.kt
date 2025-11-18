@@ -1,6 +1,9 @@
 package com.example.myimageloaderproject.modules.home.presentation
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -9,6 +12,7 @@ import android.view.animation.AnimationUtils
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
@@ -21,6 +25,7 @@ import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.core.customView.FPSOverlay
 import com.example.myimageloaderproject.core.error.AppError
 import com.example.myimageloaderproject.core.error.ErrorHandler
+import com.example.myimageloaderproject.core.helpers.PermissionHelper
 import com.example.myimageloaderproject.core.platform.NetworkStatus
 import com.example.myimageloaderproject.core.ui.base.BaseActivity
 import com.example.myimageloaderproject.databinding.ActivityHomeBinding
@@ -56,6 +61,22 @@ class HomeActivity : BaseActivity() {
     private var lastTapTime = 0L
     private val tapTimeOut = 500L
 
+    // Permission handling
+    private var pendingDownloadAction: (() -> Unit)? = null
+
+    private val storagePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Permission granted → execute pending download
+            pendingDownloadAction?.invoke()
+            pendingDownloadAction = null
+        } else {
+            // Permission denied
+            handlePermissionDenied()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -79,7 +100,12 @@ class HomeActivity : BaseActivity() {
         networkStatusBarView = findViewById(R.id.networkStatusBar)
         networkStatusText = networkStatusBarView.findViewById(R.id.networkStatusText)
 
-        photoAdapter = PhotoAdapter { gridManager.getSpanCount() }
+        photoAdapter = PhotoAdapter(
+            spanProvider = { gridManager.getSpanCount() },
+            onRequestStoragePermission = { onGranted ->
+                requestStoragePermission(onGranted)
+            }
+        )
 
         gridManager = PhotoGridManager(this, binding.recyclerView)
         gridManager.initialize()
@@ -328,5 +354,99 @@ class HomeActivity : BaseActivity() {
             }
             insets
         }
+    }
+
+    /**
+     * Request storage permission để download ảnh.
+     *
+     * @param onGranted Callback được gọi khi permission granted
+     */
+    private fun requestStoragePermission(onGranted: () -> Unit) {
+        // Kiểm tra xem có cần permission không (API 23-28 only)
+        val permission = PermissionHelper.getStoragePermission()
+        if (permission == null) {
+            // API 29+ hoặc < 23 → không cần permission
+            onGranted()
+            return
+        }
+
+        // Đã có permission → execute ngay
+        if (PermissionHelper.hasStoragePermission(this)) {
+            onGranted()
+            return
+        }
+
+        // Lưu callback để gọi sau khi granted
+        pendingDownloadAction = onGranted
+
+        // Check xem có nên show rationale không
+        if (PermissionHelper.shouldShowRationale(this)) {
+            // User đã deny trước đó → show explanation
+            showPermissionRationale {
+                // User chấp nhận → request permission
+                storagePermissionLauncher.launch(permission)
+            }
+        } else {
+            // Lần đầu request hoặc user chọn "Don't ask again"
+            storagePermissionLauncher.launch(permission)
+        }
+    }
+
+    /**
+     * Show rationale dialog giải thích tại sao cần permission.
+     */
+    private fun showPermissionRationale(onAccept: () -> Unit) {
+        Snackbar.make(
+            binding.root,
+            PermissionHelper.getPermissionMessage(isDenied = false),
+            Snackbar.LENGTH_LONG
+        ).setAction("Cho phép") {
+            onAccept()
+        }.show()
+    }
+
+    /**
+     * Handle khi permission bị denied.
+     */
+    private fun handlePermissionDenied() {
+        pendingDownloadAction = null
+
+        // Check xem user có chọn "Don't ask again" không
+        val shouldShowRationale = PermissionHelper.shouldShowRationale(this)
+
+        if (!shouldShowRationale && !PermissionHelper.hasStoragePermission(this)) {
+            // User đã chọn "Don't ask again" → redirect to settings
+            showPermissionDeniedSnackbar()
+        } else {
+            // User từ chối nhưng chưa chọn "Don't ask again"
+            Toast.makeText(
+                this,
+                "Không thể tải ảnh mà không có quyền truy cập bộ nhớ",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /**
+     * Show snackbar với action mở Settings.
+     */
+    private fun showPermissionDeniedSnackbar() {
+        Snackbar.make(
+            binding.root,
+            PermissionHelper.getPermissionMessage(isDenied = true),
+            Snackbar.LENGTH_LONG
+        ).setAction("Cài đặt") {
+            openAppSettings()
+        }.show()
+    }
+
+    /**
+     * Mở app settings để user manually grant permission.
+     */
+    private fun openAppSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+        }
+        startActivity(intent)
     }
 }
