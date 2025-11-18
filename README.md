@@ -121,14 +121,33 @@ Request → Active Resources → Memory Cache → Disk Cache → Network
 
 **Các yếu tố ảnh hưởng:**
 
-- **Device RAM**: Low RAM devices (< 1GB) → cache nhỏ hơn
-- **Screen resolution**: 1080p vs 4K → cache lớn hơn tương ứng
-- **Bitmap format**: ARGB_8888 (4 bytes/pixel) vs RGB_565 (2 bytes/pixel)
+- **Device RAM class**: Low RAM devices → chia heap cho 8, Mid RAM → chia 5, High RAM → chia 4
+- **Heap size**: Dùng `largeHeapSize` nếu app có flag `android:largeHeap="true"`
+- **Bitmap pool enabled**: Có enable bitmap pool hay không
 
 **Công thức:**
 
-- Memory cache: 2-4 screens worth of pixels
-- Bitmap pool: 2x memory cache size (nếu enabled)
+```
+totalCache = heapSize / divisor
+- Low RAM devices: divisor = 8 (cache nhỏ hơn)
+- Mid RAM devices (≤256MB heap): divisor = 5
+- High RAM devices (>256MB heap): divisor = 4 (cache lớn hơn)
+
+Nếu có BitmapPool:
+- Memory cache: 60% of totalCache
+- Bitmap pool: 40% of totalCache
+
+Nếu không có BitmapPool:
+- Memory cache: 100% of totalCache
+```
+
+**Ví dụ:**
+```
+Device: 2GB RAM, largeHeap=512MB, useBitmapPool=true
+→ totalCache = 512MB / 4 = 128MB
+→ memoryCache = 128MB × 0.6 = 76.8MB
+→ bitmapPool = 128MB × 0.4 = 51.2MB
+```
 
 #### **Bitmap Pooling**
 
@@ -216,7 +235,51 @@ ImageLoader.with(context)
     .into(imageView)
 ```
 
-### 2.6 Real-time Logging System
+### 2.6 Shimmer Loading Effect
+
+#### **Shimmer Animation**
+
+`ShimmerDrawable` cung cấp animated loading effect để cải thiện UX khi ảnh đang load:
+
+**Cơ chế:**
+
+- Gradient animation chạy ngang qua placeholder
+- Smooth 60 FPS với `ValueAnimator`
+- Tự động dừng khi ảnh load xong
+- Tích hợp với placeholder color
+
+**Khi nào dùng:**
+
+- **Social feeds**: Loading ảnh trong RecyclerView/GridView
+- **E-commerce**: Product thumbnails
+- **Gallery**: Thumbnails loading
+- **Skeleton screens**: Thay cho progress spinner
+
+**Usage:**
+
+```kotlin
+ImageLoader.with(context)
+    .load(url)
+    .placeholder("#E0E0E0")      // Background color cho shimmer
+    .enableShimmer(true)          // Bật shimmer effect
+    .into(imageView)
+```
+
+**Benefits:**
+
+- **Better perceived performance**: User cảm thấy app nhanh hơn
+- **Visual feedback**: Rõ ràng là đang loading
+- **Professional UX**: Modern loading pattern
+- **Low overhead**: Chỉ animate khi visible
+
+**Implementation details:**
+
+- Shimmer chỉ render khi ImageView visible
+- Tự động cleanup khi view detached
+- Compatible với rounded corners transformation
+- Gradient animates từ trái sang phải với alpha fade
+
+### 2.7 Real-time Logging System
 
 #### **Architecture**
 
@@ -249,7 +312,7 @@ ImageLoader.with(context)
 
 **Access:** Tap Home title 5 times để mở LogViewer
 
-### 2.7 Hệ Thống Disk Cache cho Photo Data (Multi-Page)
+### 2.8 Hệ Thống Disk Cache cho Photo Data (Multi-Page)
 
 **Chiến lược lưu trữ:**
 
@@ -285,7 +348,7 @@ ImageLoader.with(context)
 - **Bandwidth saving**: Giảm API calls không cần thiết
 - **Seamless UX**: Smooth scroll experience với preloaded pages + disk cache fallback
 
-### 2.8 Network Monitoring & Auto-Retry
+### 2.9 Network Monitoring & Auto-Retry
 
 #### **ConnectivityProvider**
 
@@ -777,7 +840,7 @@ fun release() {
 
 ### 4.5 Logger & Monitoring
 
-Chi tiết xem Section 2.6 - Real-time Logging System
+Chi tiết xem Section 2.7 - Real-time Logging System
 
 #### **LogEntry Sealed Class Hierarchy**
 
