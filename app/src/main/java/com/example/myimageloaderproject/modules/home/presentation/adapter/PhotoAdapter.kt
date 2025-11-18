@@ -20,6 +20,7 @@ import com.example.imageloader.core.RequestManager
 import com.example.imageloader.core.enums.RequestPriority
 import com.example.imageloader.transformation.CenterCropRoundedCorners
 import com.example.myimageloaderproject.R
+import com.example.myimageloaderproject.core.helpers.NotificationHelper
 import com.example.myimageloaderproject.core.helpers.PermissionHelper
 import com.example.myimageloaderproject.modules.home.domain.model.UnsplashPhoto
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -160,12 +161,21 @@ class PhotoAdapter(
                         }
 
                         withContext(Dispatchers.Main) {
+                            // Show toast
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.download_success),
                                 Toast.LENGTH_LONG
-                            )
-                                .show()
+                            ).show()
+
+                            // Show notification
+                            uri?.let {
+                                NotificationHelper.showDownloadComplete(
+                                    context,
+                                    fileName,
+                                    it
+                                )
+                            }
                         }
                     } else {
                         val downloadsDir =
@@ -181,6 +191,7 @@ class PhotoAdapter(
                         )
 
                         withContext(Dispatchers.Main) {
+                            // Show toast
                             Toast.makeText(
                                 context,
                                 context.getString(
@@ -188,17 +199,25 @@ class PhotoAdapter(
                                     file.absolutePath
                                 ),
                                 Toast.LENGTH_LONG
+                            ).show()
+
+                            // Show notification
+                            NotificationHelper.showDownloadComplete(
+                                context,
+                                fileName,
+                                uri
                             )
-                                .show()
                         }
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.download_failed, e.message),
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        val errorMsg = context.getString(R.string.download_failed, e.message)
+
+                        // Show toast
+                        Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+
+                        // Show notification
+                        NotificationHelper.showDownloadFailed(context, e.message ?: "Lỗi không xác định")
                     }
                 }
             }

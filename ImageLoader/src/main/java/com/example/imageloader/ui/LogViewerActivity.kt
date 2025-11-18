@@ -2,6 +2,7 @@ package com.example.imageloader.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
@@ -195,10 +196,19 @@ class LogViewerActivity : AppCompatActivity() {
         dialogView.findViewById<TextView>(R.id.txtDialogDiskTransform).text =
             getString(R.string.imageloader_time_with_unit, stats.diskCacheAvgTransform)
 
-        dialogView.findViewById<TextView>(R.id.txtDialogJsonCount).text =
-            stats.jsonPhotoCount.toString()
-        dialogView.findViewById<TextView>(R.id.txtDialogJsonPage).text =
-            stats.jsonCurrentPage.toString()
+        // JsonBackup section - ẩn nếu không có data
+        val hasJsonBackupData = stats.jsonPhotoCount > 0 && stats.jsonCurrentPage > 0
+        dialogView.findViewById<TextView>(R.id.txtJsonBackupTitle).visibility =
+            if (hasJsonBackupData) View.VISIBLE else View.GONE
+        dialogView.findViewById<androidx.cardview.widget.CardView>(R.id.cardJsonBackup).visibility =
+            if (hasJsonBackupData) View.VISIBLE else View.GONE
+
+        if (hasJsonBackupData) {
+            dialogView.findViewById<TextView>(R.id.txtDialogJsonCount).text =
+                stats.jsonPhotoCount.toString()
+            dialogView.findViewById<TextView>(R.id.txtDialogJsonPage).text =
+                stats.jsonCurrentPage.toString()
+        }
 
         dialogView.findViewById<TextView>(R.id.txtDialogNetworkCount).text =
             getString(R.string.imageloader_images_count, stats.networkCount)

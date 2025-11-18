@@ -25,6 +25,7 @@ import com.example.myimageloaderproject.R
 import com.example.myimageloaderproject.core.customView.FPSOverlay
 import com.example.myimageloaderproject.core.error.AppError
 import com.example.myimageloaderproject.core.error.ErrorHandler
+import com.example.myimageloaderproject.core.helpers.NotificationHelper
 import com.example.myimageloaderproject.core.helpers.PermissionHelper
 import com.example.myimageloaderproject.core.platform.NetworkStatus
 import com.example.myimageloaderproject.core.ui.base.BaseActivity
@@ -73,7 +74,21 @@ class HomeActivity : BaseActivity() {
             pendingDownloadAction = null
         } else {
             // Permission denied
-            handlePermissionDenied()
+            handleStoragePermissionDenied()
+        }
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        // Không block download nếu deny notification permission
+        // Chỉ show toast thay vì notification
+        if (!isGranted) {
+            Toast.makeText(
+                this,
+                "Bạn sẽ không nhận được thông báo khi tải ảnh hoàn tất",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -82,6 +97,12 @@ class HomeActivity : BaseActivity() {
         enableEdgeToEdge()
         binding = ActivityHomeBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Create notification channel
+        NotificationHelper.createNotificationChannel(this)
+
+        // Request notification permission nếu cần (Android 13+)
+        requestNotificationPermissionIfNeeded()
 
         setupUI()
         setupObservers()
@@ -406,9 +427,25 @@ class HomeActivity : BaseActivity() {
     }
 
     /**
-     * Handle khi permission bị denied.
+     * Request notification permission nếu cần (Android 13+).
+     * Gọi khi app start để user có quyền notification sớm.
      */
-    private fun handlePermissionDenied() {
+    private fun requestNotificationPermissionIfNeeded() {
+        val permission = NotificationHelper.getNotificationPermission() ?: return
+
+        // Đã có permission → skip
+        if (NotificationHelper.hasNotificationPermission(this)) {
+            return
+        }
+
+        // Request permission (không show rationale cho notification)
+        notificationPermissionLauncher.launch(permission)
+    }
+
+    /**
+     * Handle khi storage permission bị denied.
+     */
+    private fun handleStoragePermissionDenied() {
         pendingDownloadAction = null
 
         // Check xem user có chọn "Don't ask again" không

@@ -66,8 +66,9 @@ class PhotoDiskCache(
                 val totalPhotos = backup.pages.values.sumOf { it.size }
                 val maxPage = backup.pages.keys.maxOrNull() ?: 0
                 
-                ImageLoaderLogger.jsonPhotoCount = totalPhotos
-                ImageLoaderLogger.jsonCurrentPage = maxPage
+                // Tracking disabled - không cần demo JsonBackup section
+                // ImageLoaderLogger.jsonPhotoCount = totalPhotos
+                // ImageLoaderLogger.jsonCurrentPage = maxPage
                 
                 ImageLoaderLogger.i(TAG, "Loaded from disk: $totalPhotos photos across ${backup.pages.size} pages (max page: $maxPage)")
                 
@@ -99,8 +100,9 @@ class PhotoDiskCache(
         withContext(Dispatchers.IO) {
             try {
                 fileStorageProvider.deleteFile(BACKUP_FILE_NAME)
-                ImageLoaderLogger.jsonPhotoCount = 0
-                ImageLoaderLogger.jsonCurrentPage = 0
+                // Tracking disabled - không cần demo JsonBackup section
+                // ImageLoaderLogger.jsonPhotoCount = 0
+                // ImageLoaderLogger.jsonCurrentPage = 0
                 ImageLoaderLogger.d(TAG, "Disk cache cleared")
             } catch (e: Exception) {
                 ImageLoaderLogger.e(TAG, "Failed to clear backup", e)
