@@ -23,38 +23,45 @@ import com.example.imageloader.fetcher.HttpFetcher
  *
  * ## Usage:
  * ```kotlin
- * // Cách 1: Load ảnh đơn giản
+ * // Cách 1: Load ảnh đơn giản với default config
  * ImageLoader.with(context)
  *     .load("https://example.com/image.jpg")
  *     .into(imageView)
  *
- * // Cách 2: Với transformations
+ * // Cách 2: Config bitmap pool trước khi load
+ * ImageLoader.init(context) {
+ *     enableBitmapPool(0.4f) // 40% bitmap pool, 60% memory cache
+ * }
  * ImageLoader.with(context)
  *     .load(url)
  *     .resize(500, 500)
- *     .centerCrop()
  *     .into(imageView)
  * ```
  *
  * @param context Application context
- * @param useBitmapPool Có sử dụng BitmapPool để tái sử dụng bitmap hay không
+ * @param config Configuration object
  */
-class ImageLoader private constructor(context: Context, useBitmapPool: Boolean) {
-    /** Tính toán kích thước cache dựa trên available memory */
-    private val sizes = MemorySizeCalculator.calculate(context, useBitmapPool)
-    
+class ImageLoader private constructor(context: Context, config: Config) {
+    /** Tính toán kích thước cache dựa trên available memory và config */
+    private val sizes = MemorySizeCalculator.calculate(
+        context,
+        config.useBitmapPool,
+        config.memoryCacheFraction,
+        config.bitmapPoolFraction
+    )
+
     /** Pool để tái sử dụng bitmap, giảm GC pressure */
     private val bitmapPool = LruBitmapPool(sizes.bitmapPoolSize.toLong())
-    
+
     /** LRU cache trong RAM cho decoded bitmaps */
     private val memoryCache = MemoryCache(sizes.memoryCacheSize, bitmapPool)
 
     /** Disk cache cho raw image data */
     private val diskCache = DiskCache(context)
-    
+
     /** Cache cho bitmaps đang được View sử dụng */
     private val activeResources = ActiveResources()
-    
+
     /** HTTP client để fetch ảnh từ network */
     private val fetcher = HttpFetcher()
 
@@ -64,13 +71,120 @@ class ImageLoader private constructor(context: Context, useBitmapPool: Boolean) 
     init {
         // Cấu hình BitmapDecoder để sử dụng pool
         BitmapDecoder.setBitmapPool(bitmapPool)
-        BitmapDecoder.setUseBitmapPool(useBitmapPool)
+        BitmapDecoder.setUseBitmapPool(config.useBitmapPool)
+    }
+
+    /**
+     * Configuration cho ImageLoader.
+     *
+     * @param useBitmapPool Có enable BitmapPool hay không
+     * @param memoryCacheFraction Custom ratio cho memory cache (null = dùng default 0.6)
+     * @param bitmapPoolFraction Custom ratio cho bitmap pool (null = dùng default 0.4)
+     */
+    data class Config(
+        val useBitmapPool: Boolean = false,
+        val memoryCacheFraction: Float? = null,
+        val bitmapPoolFraction: Float? = null
+    )
+
+    /**
+     * Builder để config ImageLoader trước khi khởi tạo.
+     *
+     * ## Usage:
+     * ```kotlin
+     * ImageLoader.init(context) {
+     *     enableBitmapPool(0.4f)  // 40% pool, 60% memory
+     * }
+     * ```
+     */
+    class Builder {
+        private var useBitmapPool: Boolean = false
+        private var memoryCacheFraction: Float? = null
+        private var bitmapPoolFraction: Float? = null
+
+        /**
+         * Enable bitmap pool với tỉ lệ tùy chỉnh.
+         *
+         * Bitmap pool giúp tái sử dụng bitmap và giảm GC pressure.
+         *
+         * @param poolFraction Tỉ lệ phân bổ cho bitmap pool (0.0 - 1.0).
+         *                     Mặc định: 0.4 (40% pool, 60% memory cache)
+         *                     Nếu truyền null hoặc không truyền gì thì dùng default 0.4
+         * @return Builder để chain calls
+         *
+         * ## Ví dụ:
+         * ```kotlin
+         * enableBitmapPool()        // 40% pool (default)
+         * enableBitmapPool(0.3f)    // 30% pool, 70% memory
+         * enableBitmapPool(0.5f)    // 50% pool, 50% memory
+         * ```
+         */
+        fun enableBitmapPool(poolFraction: Float? = null): Builder {
+            useBitmapPool = true
+            // Nếu không truyền hoặc truyền null, dùng default
+            // Nếu truyền fraction, tự động tính memory fraction
+            if (poolFraction != null) {
+                bitmapPoolFraction = poolFraction.coerceIn(0f, 1f)
+                memoryCacheFraction = 1f - bitmapPoolFraction!!
+            }
+            // Nếu null thì để null, MemorySizeCalculator sẽ dùng default 0.4 và 0.6
+            return this
+        }
+
+        /**
+         * Set custom memory cache fraction.
+         *
+         * @param fraction Tỉ lệ memory cache (0.0 - 1.0)
+         * @return Builder để chain calls
+         */
+        fun setMemoryCacheFraction(fraction: Float): Builder {
+            memoryCacheFraction = fraction.coerceIn(0f, 1f)
+            return this
+        }
+
+        internal fun build(): Config {
+            return Config(useBitmapPool, memoryCacheFraction, bitmapPoolFraction)
+        }
     }
 
     companion object {
         /** Volatile để đảm bảo visibility across threads */
         @Volatile
         private var INSTANCE: ImageLoader? = null
+
+        /** Config hiện tại */
+        @Volatile
+        private var CURRENT_CONFIG: Config = Config()
+
+        /**
+         * Khởi tạo ImageLoader với custom config.
+         *
+         * **Lưu ý**: Phải gọi TRƯỚC lần `with()` đầu tiên.
+         * Sau khi singleton đã được tạo thì config không thể thay đổi.
+         *
+         * @param context Application context
+         * @param block Lambda để config Builder
+         *
+         * ## Example:
+         * ```kotlin
+         * ImageLoader.init(context) {
+         *     enableBitmapPool(0.4f)
+         * }
+         * ```
+         */
+        fun init(context: Context, block: Builder.() -> Unit) {
+            synchronized(this) {
+                if (INSTANCE != null) {
+                    throw IllegalStateException(
+                        "ImageLoader đã được khởi tạo. " +
+                                "init() phải được gọi trước khi sử dụng with()"
+                    )
+                }
+                val builder = Builder().apply(block)
+                CURRENT_CONFIG = builder.build()
+                INSTANCE = ImageLoader(context.applicationContext, CURRENT_CONFIG)
+            }
+        }
 
         /**
          * Lấy singleton instance của ImageLoader.
@@ -81,12 +195,11 @@ class ImageLoader private constructor(context: Context, useBitmapPool: Boolean) 
          * 3. Double-check bên trong synchronized
          *
          * @param context Context của app (sẽ convert sang applicationContext)
-         * @param useBitmapPool Có enable BitmapPool hay không (mặc định: false)
          * @return Singleton instance
          */
-        fun getInstance(context: Context, useBitmapPool: Boolean = false): ImageLoader {
+        private fun getInstance(context: Context): ImageLoader {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: ImageLoader(context.applicationContext, useBitmapPool).also {
+                INSTANCE ?: ImageLoader(context.applicationContext, CURRENT_CONFIG).also {
                     INSTANCE = it
                 }
             }
@@ -103,11 +216,10 @@ class ImageLoader private constructor(context: Context, useBitmapPool: Boolean) 
          * ```
          *
          * @param context Context của app
-         * @param useBitmapPool Có enable BitmapPool hay không
          * @return RequestBuilder để config và execute request
          */
-        fun with(context: Context, useBitmapPool: Boolean = false): RequestBuilder {
-            return RequestBuilder(getInstance(context, useBitmapPool).engine)
+        fun with(context: Context): RequestBuilder {
+            return RequestBuilder(getInstance(context).engine)
         }
     }
 }

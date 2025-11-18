@@ -13,11 +13,14 @@ import org.robolectric.RuntimeEnvironment
 class ImageLoaderTest {
 
     @Test
-    fun `getInstance returns singleton`() {
+    fun `with returns singleton RequestBuilder`() {
         val context = RuntimeEnvironment.getApplication()
-        val instance1 = ImageLoader.getInstance(context)
-        val instance2 = ImageLoader.getInstance(context)
-        assertSame(instance1, instance2)
+        val builder1 = ImageLoader.with(context)
+        val builder2 = ImageLoader.with(context)
+        assertNotNull(builder1)
+        assertNotNull(builder2)
+        assertEquals(RequestBuilder::class.java, builder1.javaClass)
+        assertEquals(RequestBuilder::class.java, builder2.javaClass)
     }
 
     @Test
@@ -29,9 +32,12 @@ class ImageLoaderTest {
     }
 
     @Test
-    fun `ImageLoader has engine`() {
+    fun `init with config enables bitmap pool`() {
         val context = RuntimeEnvironment.getApplication()
-        val loader = ImageLoader.getInstance(context)
-        assertNotNull(loader.engine)
+        ImageLoader.init(context) {
+            enableBitmapPool(0.3f)
+        }
+        val builder = ImageLoader.with(context)
+        assertNotNull(builder)
     }
 }

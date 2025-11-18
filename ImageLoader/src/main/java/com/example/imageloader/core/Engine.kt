@@ -54,6 +54,8 @@ import kotlin.system.measureTimeMillis
  * @param fetcher Component fetch dữ liệu từ network
  * @param bitmapPool Pool để tái sử dụng bitmap, giảm memory allocation
  */
+
+// edgecase: 100 D cùng vào priority queue -> đang bị gọi 100 lần
 class Engine(
     private val activeResources: ActiveResources,
     private val memoryCache: MemoryCache,
@@ -138,12 +140,18 @@ class Engine(
      * - Kiểm tra trạng thái `isRecycled` để tránh crash khi bitmap đã bị hủy
      * - Tự động dọn dẹp (remove) các bitmap không hợp lệ
      * - Log thời gian lookup để theo dõi hiệu năng
+     * - Respect skipMemoryCache flag: nếu request skip memory cache thì bỏ qua cache lookup
      *
      * @param req Request chứa thông tin ảnh và transformations
      * @param target Target nhận kết quả (thường là ImageView)
      * @return `true` nếu tìm thấy trong cache, `false` nếu cần load từ disk/network
      */
     fun checkMemoryCache(req: Request, target: Target): Boolean {
+        // Skip memory cache nếu request yêu cầu
+        if (!req.useMemoryCache) {
+            return false
+        }
+
         val key = buildKey(req)
         val startTime = System.currentTimeMillis()
 
@@ -268,28 +276,30 @@ class Engine(
         val startTime = System.currentTimeMillis()
 
         // 3️⃣ Disk Cache (raw bytes) → decode + transform lại
-        diskCache.get(dataKey)?.let { bytes ->
-            try {
-                val (bitmap, decodeTime, transformTime) = decodeAndTransform(bytes, req)
-                deliverResource(key, bitmap, target)
+        if (req.useDiskCache) {
+            diskCache.get(dataKey)?.let { bytes ->
+                try {
+                    val (bitmap, decodeTime, transformTime) = decodeAndTransform(bytes, req)
+                    deliverResource(key, bitmap, target)
 
-                logImageLoad(
-                    url = req.url,
-                    source = LogSource.DISK_CACHE,
-                    startTime = startTime,
-                    decodeTimeMs = decodeTime,
-                    transformTimeMs = transformTime,
-                    transformCount = req.transformations.size,
-                    fileSizeBytes = bytes.size.toLong()
-                )
-                return
-            } catch (e: Exception) {
-                ImageLoaderLogger.e(
-                    TAG,
-                    "Disk cache decode failed for: ${req.url}",
-                    e,
-                    LogCategory.CACHE
-                )
+                    logImageLoad(
+                        url = req.url,
+                        source = LogSource.DISK_CACHE,
+                        startTime = startTime,
+                        decodeTimeMs = decodeTime,
+                        transformTimeMs = transformTime,
+                        transformCount = req.transformations.size,
+                        fileSizeBytes = bytes.size.toLong()
+                    )
+                    return
+                } catch (e: Exception) {
+                    ImageLoaderLogger.e(
+                        TAG,
+                        "Disk cache decode failed for: ${req.url}",
+                        e,
+                        LogCategory.CACHE
+                    )
+                }
             }
         }
 

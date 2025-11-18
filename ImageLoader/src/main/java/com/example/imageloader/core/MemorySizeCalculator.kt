@@ -59,17 +59,26 @@ object MemorySizeCalculator {
      * - **memoryClass**: Max heap size cho app (MB)
      * - **largeHeap**: Có request largeHeap trong manifest hay không
      * - **useBitmapPool**: Có sử dụng BitmapPool hay không
+     * - **memoryCacheFraction**: Custom ratio cho memory cache (0.0 - 1.0)
+     * - **bitmapPoolFraction**: Custom ratio cho bitmap pool (0.0 - 1.0)
      *
      * ## Logic:
      * 1. Determine divisor dựa trên RAM level
      * 2. totalCache = heap / divisor
-     * 3. Split totalCache theo useBitmapPool flag
+     * 3. Split totalCache theo custom ratios (nếu có) hoặc default ratios
      *
      * @param context Application context
      * @param useBitmapPool Có sử dụng BitmapPool hay không
+     * @param memoryCacheFraction Custom ratio cho memory cache (null = dùng default)
+     * @param bitmapPoolFraction Custom ratio cho bitmap pool (null = dùng default)
      * @return Sizes object chứa memoryCacheSize và bitmapPoolSize
      */
-    fun calculate(context: Context, useBitmapPool: Boolean): Sizes {
+    fun calculate(
+        context: Context,
+        useBitmapPool: Boolean,
+        memoryCacheFraction: Float? = null,
+        bitmapPoolFraction: Float? = null
+    ): Sizes {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val isLowRam = am.isLowRamDevice
 
@@ -87,12 +96,13 @@ object MemorySizeCalculator {
 
         val totalCacheBytes = (totalHeapBytes / divisor).toInt()
 
-        val memoryFraction = if (useBitmapPool)
+        // Sử dụng custom ratios nếu có, không thì dùng default
+        val memoryFraction = memoryCacheFraction ?: if (useBitmapPool)
             MEMORY_CACHE_FRACTION_WITH_POOL
         else
             MEMORY_CACHE_FRACTION_NO_POOL
 
-        val poolFraction = if (useBitmapPool)
+        val poolFraction = bitmapPoolFraction ?: if (useBitmapPool)
             BITMAP_POOL_FRACTION_WITH_POOL
         else
             BITMAP_POOL_FRACTION_NO_POOL
@@ -104,6 +114,7 @@ object MemorySizeCalculator {
             "MemorySizeCalculator",
             "memoryClass=${memoryClassMB}MB (largeHeap=$isLargeHeap), " +
                     "lowRam=$isLowRam, usePool=$useBitmapPool, " +
+                    "memFraction=$memoryFraction, poolFraction=$poolFraction, " +
                     "totalCache=${totalCacheBytes / 1024 / 1024}MB, " +
                     "memCache=${memoryCacheSize / 1024 / 1024}MB, " +
                     "bitmapPool=${bitmapPoolSize / 1024 / 1024}MB"
