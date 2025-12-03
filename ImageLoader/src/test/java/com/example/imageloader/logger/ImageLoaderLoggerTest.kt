@@ -135,11 +135,11 @@ class ImageLoaderLoggerTest {
 
     @Test
     fun `should limit logs to max capacity`() {
-        repeat(510) {
+        repeat(2010) {
             ImageLoaderLogger.log(createSampleImageLoadLog(totalTimeMs = it.toLong()))
         }
         val logs = ImageLoaderLogger.getAllLogs()
-        assertTrue("Logs should be trimmed to 500 max", logs.size <= 500)
+        assertTrue("Logs should be trimmed to 2010 max", logs.size <= 500)
     }
 
     @Test

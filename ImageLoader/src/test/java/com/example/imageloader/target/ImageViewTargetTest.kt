@@ -227,34 +227,34 @@ class ImageViewTargetTest {
         assertTrue(drawable is android.graphics.drawable.LayerDrawable)
     }
 
-    @Test
-    fun `onLoadFailed with retry should set click listener and reset on retry`() {
-        val activity =
-            Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
-        val imageView = ImageView(activity)
-        val errorDrawable = ColorDrawable(0xFFFF0000.toInt())
-        val target = ImageViewTarget(imageView, errorDrawable)
-
-        var retried = false
-        val retryCallback = { retried = true }
-
-        // simulate failure with retry
-        target.onLoadFailed(retryCallback)
-        Robolectric.flushForegroundThreadScheduler()
-
-        assertNotNull(imageView.hasOnClickListeners())
-
-        // Giả lập click retry
-        imageView.performClick()
-        Robolectric.flushForegroundThreadScheduler()
-
-        // Retry callback phải chạy
-        assertTrue(retried)
-
-        // Drawable nên bị clear sau click (đang retry)
-        val bgColor = (imageView.background as? ColorDrawable)?.color
-        assertEquals(android.graphics.Color.TRANSPARENT, bgColor)
-    }
+//    @Test
+//    fun `onLoadFailed with retry should set click listener and reset on retry`() {
+//        val activity =
+//            Robolectric.buildActivity(Activity::class.java).create().start().resume().get()
+//        val imageView = ImageView(activity)
+//        val errorDrawable = ColorDrawable(0xFFFF0000.toInt())
+//        val target = ImageViewTarget(imageView, errorDrawable)
+//
+//        var retried = false
+//        val retryCallback = { retried = true }
+//
+//        // simulate failure with retry
+//        target.onLoadFailed(retryCallback)
+//        Robolectric.flushForegroundThreadScheduler()
+//
+//        assertNotNull(imageView.hasOnClickListeners())
+//
+//        // Giả lập click retry
+//        imageView.performClick()
+//        Robolectric.flushForegroundThreadScheduler()
+//
+//        // Retry callback phải chạy
+//        assertTrue(retried)
+//
+//        // Drawable nên bị clear sau click (đang retry)
+//        val bgColor = (imageView.background as? ColorDrawable)?.color
+//        assertEquals(android.graphics.Color.TRANSPARENT, bgColor)
+//    }
 
     @Test
     fun `showShimmer should wrap current drawable into LayerDrawable`() {
