@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     id("jacoco")
+    id("maven-publish")
 }
 
 android {
@@ -113,8 +114,24 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
-jacoco {
-    toolVersion = "0.8.12"
+publishing {
+    publications {
+        create<MavenPublication>("release") {
+            from(components["release"])
+            groupId = project.group.toString()
+            artifactId = "imageloader"
+            version = project.version.toString()
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            val repo = System.getenv("GITHUB_REPOSITORY") ?: "OWNER/REPO"
+            url = uri("https://maven.pkg.github.com/$repo")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: (findProperty("gpr.user") as String? ?: "")
+                password = System.getenv("GITHUB_TOKEN") ?: (findProperty("gpr.key") as String? ?: "")
+            }
+        }
+    }
 }
-
-

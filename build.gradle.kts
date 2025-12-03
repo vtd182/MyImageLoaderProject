@@ -5,3 +5,6 @@ plugins {
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.android.library) apply false
 }
+
+group = (findProperty("GROUP") as String?) ?: "com.example.imageloader"
+version = (findProperty("VERSION_NAME") as String?) ?: "0.1.0-SNAPSHOT"
