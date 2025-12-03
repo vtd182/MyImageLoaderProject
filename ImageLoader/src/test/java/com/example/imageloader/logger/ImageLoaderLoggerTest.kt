@@ -139,7 +139,7 @@ class ImageLoaderLoggerTest {
             ImageLoaderLogger.log(createSampleImageLoadLog(totalTimeMs = it.toLong()))
         }
         val logs = ImageLoaderLogger.getAllLogs()
-        assertTrue("Logs should be trimmed to 2010 max", logs.size <= 500)
+        assertTrue("Logs should be trimmed to 2010 max", logs.size <= 2010)
     }
 
     @Test
