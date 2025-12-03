@@ -43,6 +43,12 @@ android {
             }
         }
     }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
 }
 
 jacoco {
@@ -114,23 +120,25 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("release") {
-            from(components["release"])
-            groupId = project.group.toString()
-            artifactId = "imageloader"
-            version = project.version.toString()
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                from(components["release"])
+                groupId = project.group.toString()
+                artifactId = "imageloader"
+                version = project.version.toString()
+            }
         }
-    }
-    repositories {
-        maven {
-            name = "GitHubPackages"
-            val repo = System.getenv("GITHUB_REPOSITORY") ?: "OWNER/REPO"
-            url = uri("https://maven.pkg.github.com/$repo")
-            credentials {
-                username = System.getenv("GITHUB_ACTOR") ?: (findProperty("gpr.user") as String? ?: "")
-                password = System.getenv("GITHUB_TOKEN") ?: (findProperty("gpr.key") as String? ?: "")
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                val repo = System.getenv("GITHUB_REPOSITORY") ?: "OWNER/REPO"
+                url = uri("https://maven.pkg.github.com/$repo")
+                credentials {
+                    username = System.getenv("GITHUB_ACTOR") ?: (findProperty("gpr.user") as String? ?: "")
+                    password = System.getenv("GITHUB_TOKEN") ?: (findProperty("gpr.key") as String? ?: "")
+                }
             }
         }
     }
